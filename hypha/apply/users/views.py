@@ -19,7 +19,8 @@ from django.utils.translation import gettext_lazy as _
 from django.views.generic import UpdateView
 from django.views.generic.base import TemplateView
 from django.views.generic.edit import FormView
-from hijack.views import login_with_id
+from hijack.views import AcquireUserView
+from ratelimit.decorators import ratelimit
 from two_factor.forms import AuthenticationTokenForm, BackupTokenForm
 from two_factor.views import DisableView as TwoFactorDisableView
 from two_factor.views import LoginView as TwoFactorLoginView
@@ -41,6 +42,8 @@ from .utils import send_confirmation_email
 User = get_user_model()
 
 
+@method_decorator(ratelimit(key='ip', rate=settings.DEFAULT_RATE_LIMIT, method='POST', block=True), name='dispatch')
+@method_decorator(ratelimit(key='post:email', rate=settings.DEFAULT_RATE_LIMIT, method='POST', block=True), name='dispatch')
 class LoginView(TwoFactorLoginView):
     form_list = (
         ('auth', CustomAuthenticationForm),
@@ -67,7 +70,7 @@ class AccountView(UpdateView):
     def form_valid(self, form):
         updated_email = form.cleaned_data['email']
         name = form.cleaned_data['full_name']
-        slack = form.cleaned_data['slack']
+        slack = form.cleaned_data.get('slack', '')
         user = get_object_or_404(User, id=self.request.user.id)
         if updated_email and updated_email != user.email:
             base_url = reverse('users:email_change_confirm_password')
@@ -162,13 +165,13 @@ def become(request):
     if not request.user.is_apply_staff:
         raise PermissionDenied()
 
-    id = request.POST.get('user')
+    id = request.POST.get('user_pk')
     if request.POST and id:
         target_user = User.objects.get(pk=id)
         if target_user.is_superuser:
             raise PermissionDenied()
 
-        return login_with_id(request, id)
+        return AcquireUserView.as_view()(request)
     return redirect('users:account')
 
 
@@ -276,6 +279,7 @@ def create_password(request):
     })
 
 
+@method_decorator(ratelimit(key='user', rate=settings.DEFAULT_RATE_LIMIT, method='POST', block=True), name='dispatch')
 @method_decorator(login_required, name='dispatch')
 class TWOFABackupTokensPasswordView(FormView):
     """
@@ -291,6 +295,7 @@ class TWOFABackupTokensPasswordView(FormView):
         return kwargs
 
 
+@method_decorator(ratelimit(key='user', rate=settings.DEFAULT_RATE_LIMIT, method='POST', block=True), name='dispatch')
 @method_decorator(login_required, name='dispatch')
 class TWOFADisableView(TwoFactorDisableView):
     """

@@ -165,6 +165,8 @@ MIDDLEWARE = [
     'django_referrer_policy.middleware.ReferrerPolicyMiddleware',
     'django_otp.middleware.OTPMiddleware',
 
+    'hijack.middleware.HijackUserMiddleware',
+
     'hypha.apply.users.middleware.SocialAuthExceptionMiddleware',
 
     'wagtail.contrib.redirects.middleware.RedirectMiddleware',
@@ -548,6 +550,7 @@ FILE_ACCEPT_ATTR_VALUE = ', '.join(['.' + ext for ext in FILE_ALLOWED_EXTENSIONS
 HIJACK_LOGIN_REDIRECT_URL = '/dashboard/'
 HIJACK_LOGOUT_REDIRECT_URL = '/account/'
 HIJACK_DECORATOR = 'hypha.apply.users.decorators.superuser_decorator'
+HIJACK_PERMISSION_CHECK = 'hijack.permissions.superusers_and_staff'
 
 
 # Messaging Settings
@@ -770,3 +773,7 @@ if 'AWS_STORAGE_BUCKET_NAME' in env:
 
 MATOMO_URL = env.get('MATOMO_URL', False)
 MATOMO_SITEID = env.get('MATOMO_SITEID', False)
+
+# Form Rate-Limit Configuration
+# DEFAULT_RATE_LIMIT is used by all the forms unless which is set 5 requests/minute by default
+DEFAULT_RATE_LIMIT = env.get('DEFAULT_RATE_LIMIT', '5/m')
