@@ -59,10 +59,6 @@ def invoice_status_user_choices(user):
     return []
 
 
-def receipt_path(instance, filename):
-    return f'projects/{instance.project_id}/payment_invoices/{filename}'
-
-
 def invoice_path(instance, filename):
     return f'projects/{instance.project_id}/payment_invoices/{filename}'
 
@@ -87,7 +83,7 @@ class InvoiceQueryset(models.QuerySet):
         return self.exclude(status=DECLINED)
 
     def total_value(self, field):
-        return self.aggregate(total=Coalesce(Sum(field), Value(0)))['total']
+        return self.aggregate(total=Coalesce(Sum(field), Value(0), output_field=models.DecimalField()))['total']
 
     def paid_value(self):
         return self.filter(status=PAID).total_value('paid_value')
@@ -278,7 +274,7 @@ class SupportingDocument(models.Model):
     )
 
     def __str__(self):
-        return self.invoice.name + ' -> ' + self.document.name
+        return "{invoice}".format(invoice=self.invoice) + ' -> ' + self.document.name
 
     @property
     def filename(self):
