@@ -36,8 +36,9 @@ class CategoryQuestionBlock(OptionalFormFieldBlock):
         help_text=_('Leave blank to use the default Category label'),
     )
     help_text = TextBlock(
+        label=_('Help text'),
         required=False,
-        label=_('Leave blank to use the default Category help text'),
+        help_text=_('Leave blank to use the default Category help text'),
     )
     category = ModelChooserBlock('categories.Category')
     multi = BooleanBlock(label=_('Multi select'), required=False)
@@ -85,6 +86,15 @@ class CategoryQuestionBlock(OptionalFormFieldBlock):
         category = value['category']
         data = category.options.filter(id__in=data).values_list('value', flat=True)
         return data
+
+    def render(self, value, context):
+        # Overwriting field_label and help_text with default for empty values
+        category_fields = {'field_label': 'name', 'help_text': 'help_text'}
+
+        for field in category_fields.keys():
+            if not value.get(field):
+                value[field] = getattr(value['category'], category_fields[field])
+        return super(CategoryQuestionBlock, self).render(value, context)
 
     def get_searchable_content(self, value, data):
         return None
