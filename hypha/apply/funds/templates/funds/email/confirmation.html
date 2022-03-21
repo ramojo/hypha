@@ -1,15 +1,15 @@
 {% extends "messages/email/base.html" %}
 {% load i18n %}
 
-{% block content %}{% blocktrans with title=source.page.specific.title %}We appreciate your {{ title }} application submission to the {{ ORG_LONG_NAME }}. We will review and reply to your submission as quickly as possible.{% endblocktrans %}
+{% block content %}{% blocktrans with title=source.page.specific.title schema=request.scheme host=request.get_host url=source.get_absolute_url %}We appreciate your {{ title }} application submission to the {{ ORG_LONG_NAME }}. We will review and reply to your submission as quickly as possible.
 
-{% trans "Please submit any questions related to your application here" %}: {{ request.scheme }}://{{ request.get_host }}{{ source.get_absolute_url }}#communications
+Please submit any questions related to your application here: {{ scheme }}://{{ host }}{{ url }}#communications
 
-{% trans "Please do not reply to this email with questions related to your application." %}
+Please do not reply to this email with questions related to your application.
 
-{% blocktrans %}If you have issues accessing the submission system or general inquiries, please email us at {{ ORG_EMAIL}}.{% endblocktrans %}
+If you have issues accessing the submission system or general inquiries, please email us at {{ ORG_EMAIL}}.
 
-{% blocktrans %}For more information about our support options, review process, and selection criteria, please visit our website at {{ ORG_URL }}.{% endblocktrans %}
+For more information about our support options, review process, and selection criteria, please visit our website at {{ ORG_URL }}.{% endblocktrans %}
 
 {% with email_context=source.page.specific %}{{ email_context.confirmation_text_extra }}{% endwith %}
 
