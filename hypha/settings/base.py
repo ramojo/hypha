@@ -208,6 +208,9 @@ WAGTAIL_CACHE_TIMEOUT = CACHE_CONTROL_MAX_AGE
 # Set feed cache timeout (automatic cache refresh).
 FEED_CACHE_TIMEOUT = 600
 
+# Set X-Frame-Options header for every outgoing HttpResponse
+X_FRAME_OPTIONS = 'SAMEORIGIN'
+
 if env.str('REDIS_URL', None):
     CACHES = {
         'default': {
@@ -653,3 +656,11 @@ if env.str('AWS_STORAGE_BUCKET_NAME', None):
 # Matomo tracking
 MATOMO_URL = env.str('MATOMO_URL', None)
 MATOMO_SITEID = env.str('MATOMO_SITEID', None)
+
+# Sage IntAcct integration
+INTACCT_ENABLED = env.bool('INTACCT_ENABLED', False)
+INTACCT_SENDER_ID = env.str('INTACCT_SENDER_ID', '')
+INTACCT_SENDER_PASSWORD = env.str('INTACCT_SENDER_PASSWORD', '')
+INTACCT_USER_ID = env.str('INTACCT_USER_ID', '')
+INTACCT_COMPANY_ID = env.str('INTACCT_COMPANY_ID', '')
+INTACCT_USER_PASSWORD = env.str('INTACCT_USER_PASSWORD', '')
