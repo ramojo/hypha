@@ -1,0 +1,15 @@
+@import "tailwindcss/base";
+@import "./base/variables.css";
+@import "./base/core.css";
+@import "./base/forms.css";
+
+@import "tailwindcss/components";
+@import "./components/choices.css";
+@import "./components/daterangepicker.css";
+
+@import "tailwindcss/utilities";
+/* @import "./custom-utilities.css"; */
+
+/* @tailwind base;
+@tailwind components;
+@tailwind utilities; */

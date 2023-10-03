@@ -17,6 +17,16 @@
         margin: 0 auto;
     }
 
+    &__admin-bar-inner-project {
+        max-width: $site-width;
+        margin: 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-direction: row;
+        flex-wrap: nowrap;
+    }
+
     &__projects-link {
         display: inline-flex;
         align-items: center;
@@ -25,7 +35,7 @@
 
         &::before {
             @include triangle(top, currentColor, 5px);
-            margin-right: .5rem;
+            margin-right: 0.5rem;
             transform: rotate(-90deg);
         }
     }
@@ -38,14 +48,13 @@
 
         &::before {
             @include triangle(top, currentColor, 5px);
-            margin-right: .5rem;
+            margin-right: 0.5rem;
             transform: rotate(-90deg);
         }
     }
 
     &__heading {
         @include responsive-font-sizes(30px, map-get($font-sizes, beta));
-        letter-spacing: -.02rem;
         font-weight: $weight--bold;
         margin: 0;
     }
@@ -62,13 +71,13 @@
         span {
             &::after {
                 padding: 0 15px;
-                content: '|';
+                content: "|";
             }
 
             &:last-child {
                 &::after {
                     padding: 0;
-                    content: '';
+                    content: "";
                 }
             }
         }
@@ -78,7 +87,7 @@
         padding: $mobile-gutter 0;
 
         @include media-query(tablet-portrait) {
-            padding: 3rem 0;
+            padding: 1rem 0;
         }
     }
 
@@ -89,7 +98,7 @@
         flex-direction: column;
         margin-top: $mobile-gutter;
         font-weight: $weight--normal;
-        color: transparentize($color--dark-grey, .5);
+        color: transparentize($color--dark-grey, 0.5);
 
         @include media-query(tablet-landscape) {
             flex-direction: row;
@@ -141,6 +150,17 @@
 
         .question {
             margin: 0;
+        }
+    }
+
+    &__paf_answers {
+        section {
+            margin: 0 0 1.5rem;
+        }
+
+        h4 {
+            margin: 0;
+            font-size: 16px;
         }
     }
 }

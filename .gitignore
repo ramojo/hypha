@@ -1,3 +1,4 @@
+docs_build/
 /hypha/static_compiled
 __coverage__/
 *.pyc
@@ -12,7 +13,6 @@ __coverage__/
 node_modules/
 /npm-debug.log
 /.idea/
-salesforce.env
 
 # Distribution / packaging
 .Python
@@ -32,14 +32,27 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-
+.coverage
+htmlcov/
 
 # Cache
 .mypy_cache/
-
-# Webpack
-webpack-stats.json
+.pytest_cache/
 
 # Compiled language files
 *.mo
 .env
+
+# Visual Studio Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+
+# Local History for Visual Studio Code
+.history/
+
+# Built Visual Studio Code Extensions
+*.vsix

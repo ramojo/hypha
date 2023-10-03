@@ -1,10 +1,11 @@
 import json
 from io import BytesIO
-from unittest import mock
 
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.http import QueryDict
 from django.test import TestCase, override_settings
 
+from hypha.apply.home.factories import ApplySiteFactory
 from hypha.apply.users.tests.factories import (
     Finance2Factory,
     FinanceFactory,
@@ -21,25 +22,29 @@ from ..forms.payment import (
     filter_request_choices,
 )
 from ..forms.project import (
+    ChangePAFStatusForm,
     ProjectApprovalForm,
     StaffUploadContractForm,
     UploadContractForm,
 )
 from ..models.payment import (
-    APPROVED_BY_FINANCE_1,
+    APPROVED_BY_FINANCE,
     APPROVED_BY_FINANCE_2,
     APPROVED_BY_STAFF,
-    CHANGES_REQUESTED_BY_FINANCE_1,
+    CHANGES_REQUESTED_BY_FINANCE,
     CHANGES_REQUESTED_BY_FINANCE_2,
     CHANGES_REQUESTED_BY_STAFF,
     DECLINED,
+    PAID,
     RESUBMITTED,
     SUBMITTED,
     invoice_status_user_choices,
 )
+from ..models.project import APPROVE, ProjectSettings
 from .factories import (
     DocumentCategoryFactory,
     InvoiceFactory,
+    PAFReviewerRoleFactory,
     ProjectFactory,
     SupportingDocumentFactory,
     address_to_form_data,
@@ -52,8 +57,13 @@ class TestChangeInvoiceStatusFormForm(TestCase):
         user = StaffFactory()
         form = ChangeInvoiceStatusForm(instance=invoice, user=user)
 
-        expected = set(filter_request_choices([CHANGES_REQUESTED_BY_STAFF, APPROVED_BY_STAFF, DECLINED], invoice_status_user_choices(user)))
-        actual = set(form.fields['status'].choices)
+        expected = set(
+            filter_request_choices(
+                [CHANGES_REQUESTED_BY_STAFF, APPROVED_BY_STAFF, DECLINED],
+                invoice_status_user_choices(user),
+            )
+        )
+        actual = set(form.fields["status"].choices)
         self.assertEqual(expected, actual)
 
     def test_finance1_choices_with_submitted_status(self):
@@ -61,8 +71,13 @@ class TestChangeInvoiceStatusFormForm(TestCase):
         user = FinanceFactory()
         form = ChangeInvoiceStatusForm(instance=invoice, user=user)
 
-        expected = set(filter_request_choices([CHANGES_REQUESTED_BY_STAFF, APPROVED_BY_STAFF, DECLINED], invoice_status_user_choices(user)))
-        actual = set(form.fields['status'].choices)
+        expected = set(
+            filter_request_choices(
+                [CHANGES_REQUESTED_BY_STAFF, APPROVED_BY_STAFF, DECLINED],
+                invoice_status_user_choices(user),
+            )
+        )
+        actual = set(form.fields["status"].choices)
         self.assertEqual(expected, actual)
 
     def test_finance2_choices_with_submitted_status(self):
@@ -70,8 +85,13 @@ class TestChangeInvoiceStatusFormForm(TestCase):
         user = Finance2Factory()
         form = ChangeInvoiceStatusForm(instance=invoice, user=user)
 
-        expected = set(filter_request_choices([CHANGES_REQUESTED_BY_STAFF, APPROVED_BY_STAFF, DECLINED], invoice_status_user_choices(user)))
-        actual = set(form.fields['status'].choices)
+        expected = set(
+            filter_request_choices(
+                [CHANGES_REQUESTED_BY_STAFF, APPROVED_BY_STAFF, DECLINED],
+                invoice_status_user_choices(user),
+            )
+        )
+        actual = set(form.fields["status"].choices)
         self.assertEqual(expected, actual)
 
     def test_staff_choices_with_resubmitted_status(self):
@@ -79,9 +99,13 @@ class TestChangeInvoiceStatusFormForm(TestCase):
         user = StaffFactory()
         form = ChangeInvoiceStatusForm(instance=invoice, user=user)
 
-        expected = set(filter_request_choices([CHANGES_REQUESTED_BY_STAFF, APPROVED_BY_STAFF, DECLINED],
-                                              invoice_status_user_choices(user)))
-        actual = set(form.fields['status'].choices)
+        expected = set(
+            filter_request_choices(
+                [CHANGES_REQUESTED_BY_STAFF, APPROVED_BY_STAFF, DECLINED],
+                invoice_status_user_choices(user),
+            )
+        )
+        actual = set(form.fields["status"].choices)
         self.assertEqual(expected, actual)
 
     def test_finance1_choices_with_resubmitted_status(self):
@@ -89,9 +113,13 @@ class TestChangeInvoiceStatusFormForm(TestCase):
         user = FinanceFactory()
         form = ChangeInvoiceStatusForm(instance=invoice, user=user)
 
-        expected = set(filter_request_choices([CHANGES_REQUESTED_BY_STAFF, APPROVED_BY_STAFF, DECLINED],
-                                              invoice_status_user_choices(user)))
-        actual = set(form.fields['status'].choices)
+        expected = set(
+            filter_request_choices(
+                [CHANGES_REQUESTED_BY_STAFF, APPROVED_BY_STAFF, DECLINED],
+                invoice_status_user_choices(user),
+            )
+        )
+        actual = set(form.fields["status"].choices)
         self.assertEqual(expected, actual)
 
     def test_finance2_choices_with_resubmitted_status(self):
@@ -99,9 +127,13 @@ class TestChangeInvoiceStatusFormForm(TestCase):
         user = Finance2Factory()
         form = ChangeInvoiceStatusForm(instance=invoice, user=user)
 
-        expected = set(filter_request_choices([CHANGES_REQUESTED_BY_STAFF, APPROVED_BY_STAFF, DECLINED],
-                                              invoice_status_user_choices(user)))
-        actual = set(form.fields['status'].choices)
+        expected = set(
+            filter_request_choices(
+                [CHANGES_REQUESTED_BY_STAFF, APPROVED_BY_STAFF, DECLINED],
+                invoice_status_user_choices(user),
+            )
+        )
+        actual = set(form.fields["status"].choices)
         self.assertEqual(expected, actual)
 
     def test_staff_choices_with_changes_requested_by_staff_status(self):
@@ -109,8 +141,10 @@ class TestChangeInvoiceStatusFormForm(TestCase):
         user = StaffFactory()
         form = ChangeInvoiceStatusForm(instance=invoice, user=user)
 
-        expected = set(filter_request_choices([DECLINED], invoice_status_user_choices(user)))
-        actual = set(form.fields['status'].choices)
+        expected = set(
+            filter_request_choices([DECLINED], invoice_status_user_choices(user))
+        )
+        actual = set(form.fields["status"].choices)
         self.assertEqual(expected, actual)
 
     def test_finance1_choices_with_changes_requested_by_staff_status(self):
@@ -118,8 +152,10 @@ class TestChangeInvoiceStatusFormForm(TestCase):
         user = FinanceFactory()
         form = ChangeInvoiceStatusForm(instance=invoice, user=user)
 
-        expected = set(filter_request_choices([DECLINED], invoice_status_user_choices(user)))
-        actual = set(form.fields['status'].choices)
+        expected = set(
+            filter_request_choices([DECLINED], invoice_status_user_choices(user))
+        )
+        actual = set(form.fields["status"].choices)
         self.assertEqual(expected, actual)
 
     def test_finance2_choices_with_changes_requested_by_staff_status(self):
@@ -127,8 +163,10 @@ class TestChangeInvoiceStatusFormForm(TestCase):
         user = Finance2Factory()
         form = ChangeInvoiceStatusForm(instance=invoice, user=user)
 
-        expected = set(filter_request_choices([DECLINED], invoice_status_user_choices(user)))
-        actual = set(form.fields['status'].choices)
+        expected = set(
+            filter_request_choices([DECLINED], invoice_status_user_choices(user))
+        )
+        actual = set(form.fields["status"].choices)
         self.assertEqual(expected, actual)
 
     def test_staff_choices_with_approved_by_staff_status(self):
@@ -136,9 +174,13 @@ class TestChangeInvoiceStatusFormForm(TestCase):
         user = StaffFactory()
         form = ChangeInvoiceStatusForm(instance=invoice, user=user)
 
-        expected = set(filter_request_choices([CHANGES_REQUESTED_BY_FINANCE_1, APPROVED_BY_FINANCE_1],
-                                              invoice_status_user_choices(user)))
-        actual = set(form.fields['status'].choices)
+        expected = set(
+            filter_request_choices(
+                [CHANGES_REQUESTED_BY_FINANCE, APPROVED_BY_FINANCE],
+                invoice_status_user_choices(user),
+            )
+        )
+        actual = set(form.fields["status"].choices)
         self.assertEqual(expected, actual)
 
     def test_finance1_choices_with_approved_by_staff_status(self):
@@ -146,9 +188,13 @@ class TestChangeInvoiceStatusFormForm(TestCase):
         user = FinanceFactory()
         form = ChangeInvoiceStatusForm(instance=invoice, user=user)
 
-        expected = set(filter_request_choices([CHANGES_REQUESTED_BY_FINANCE_1, APPROVED_BY_FINANCE_1],
-                                              invoice_status_user_choices(user)))
-        actual = set(form.fields['status'].choices)
+        expected = set(
+            filter_request_choices(
+                [CHANGES_REQUESTED_BY_FINANCE, APPROVED_BY_FINANCE],
+                invoice_status_user_choices(user),
+            )
+        )
+        actual = set(form.fields["status"].choices)
         self.assertEqual(expected, actual)
 
     def test_finance2_choices_with_approved_by_staff_status(self):
@@ -156,110 +202,188 @@ class TestChangeInvoiceStatusFormForm(TestCase):
         user = Finance2Factory()
         form = ChangeInvoiceStatusForm(instance=invoice, user=user)
 
-        expected = set(filter_request_choices([CHANGES_REQUESTED_BY_FINANCE_1, APPROVED_BY_FINANCE_1],
-                                              invoice_status_user_choices(user)))
-        actual = set(form.fields['status'].choices)
+        expected = set(
+            filter_request_choices(
+                [CHANGES_REQUESTED_BY_FINANCE, APPROVED_BY_FINANCE],
+                invoice_status_user_choices(user),
+            )
+        )
+        actual = set(form.fields["status"].choices)
         self.assertEqual(expected, actual)
 
     def test_staff_choices_with_changes_requested_by_finance1_status(self):
-        invoice = InvoiceFactory(status=CHANGES_REQUESTED_BY_FINANCE_1)
+        invoice = InvoiceFactory(status=CHANGES_REQUESTED_BY_FINANCE)
         user = StaffFactory()
         form = ChangeInvoiceStatusForm(instance=invoice, user=user)
 
-        expected = set(filter_request_choices([CHANGES_REQUESTED_BY_STAFF, DECLINED],
-                                              invoice_status_user_choices(user)))
-        actual = set(form.fields['status'].choices)
+        expected = set(
+            filter_request_choices(
+                [CHANGES_REQUESTED_BY_STAFF, DECLINED],
+                invoice_status_user_choices(user),
+            )
+        )
+        actual = set(form.fields["status"].choices)
         self.assertEqual(expected, actual)
 
     def test_finance1_choices_with_changes_requested_by_finance1_status(self):
-        invoice = InvoiceFactory(status=CHANGES_REQUESTED_BY_FINANCE_1)
+        invoice = InvoiceFactory(status=CHANGES_REQUESTED_BY_FINANCE)
         user = FinanceFactory()
         form = ChangeInvoiceStatusForm(instance=invoice, user=user)
 
-        expected = set(filter_request_choices([CHANGES_REQUESTED_BY_STAFF, DECLINED],
-                                              invoice_status_user_choices(user)))
-        actual = set(form.fields['status'].choices)
+        expected = set(
+            filter_request_choices(
+                [CHANGES_REQUESTED_BY_STAFF, DECLINED],
+                invoice_status_user_choices(user),
+            )
+        )
+        actual = set(form.fields["status"].choices)
         self.assertEqual(expected, actual)
 
     def test_finance2_choices_with_changes_requested_by_finance1_status(self):
-        invoice = InvoiceFactory(status=CHANGES_REQUESTED_BY_FINANCE_1)
+        invoice = InvoiceFactory(status=CHANGES_REQUESTED_BY_FINANCE)
         user = Finance2Factory()
         form = ChangeInvoiceStatusForm(instance=invoice, user=user)
 
-        expected = set(filter_request_choices([CHANGES_REQUESTED_BY_STAFF, DECLINED],
-                                              invoice_status_user_choices(user)))
-        actual = set(form.fields['status'].choices)
+        expected = set(
+            filter_request_choices(
+                [CHANGES_REQUESTED_BY_STAFF, DECLINED],
+                invoice_status_user_choices(user),
+            )
+        )
+        actual = set(form.fields["status"].choices)
         self.assertEqual(expected, actual)
 
     def test_staff_choices_with_approved_by_finance1_status(self):
-        invoice = InvoiceFactory(status=APPROVED_BY_FINANCE_1)
+        invoice = InvoiceFactory(status=APPROVED_BY_FINANCE)
         user = StaffFactory()
         form = ChangeInvoiceStatusForm(instance=invoice, user=user)
 
-        expected = set(filter_request_choices([CHANGES_REQUESTED_BY_FINANCE_2, APPROVED_BY_FINANCE_2],
-                                              invoice_status_user_choices(user)))
-        actual = set(form.fields['status'].choices)
+        expected = set(
+            filter_request_choices(
+                [CHANGES_REQUESTED_BY_FINANCE_2, APPROVED_BY_FINANCE_2],
+                invoice_status_user_choices(user),
+            )
+        )
+        actual = set(form.fields["status"].choices)
         self.assertEqual(expected, actual)
 
-    def test_finance1_choices_with_approved_by_finance1_status(self):
-        invoice = InvoiceFactory(status=APPROVED_BY_FINANCE_1)
+    @override_settings(INVOICE_EXTENDED_WORKFLOW=True)
+    def test_finance1_choices_with_approved_by_finance1_status_with_extended_flow(self):
+        invoice = InvoiceFactory(status=APPROVED_BY_FINANCE)
         user = FinanceFactory()
         form = ChangeInvoiceStatusForm(instance=invoice, user=user)
 
-        expected = set(filter_request_choices([CHANGES_REQUESTED_BY_FINANCE_2, APPROVED_BY_FINANCE_2],
-                                              invoice_status_user_choices(user)))
-        actual = set(form.fields['status'].choices)
+        expected = set(
+            filter_request_choices(
+                [CHANGES_REQUESTED_BY_FINANCE_2, APPROVED_BY_FINANCE_2],
+                invoice_status_user_choices(user),
+            )
+        )
+        actual = set(form.fields["status"].choices)
         self.assertEqual(expected, actual)
 
+    @override_settings(INVOICE_EXTENDED_WORKFLOW=False)
+    def test_finance1_choices_with_approved_by_finance1_status(self):
+        invoice = InvoiceFactory(status=APPROVED_BY_FINANCE)
+        user = FinanceFactory()
+        form = ChangeInvoiceStatusForm(instance=invoice, user=user)
+
+        expected = set(
+            filter_request_choices([PAID], invoice_status_user_choices(user))
+        )
+        actual = set(form.fields["status"].choices)
+        self.assertEqual(expected, actual)
+
+    @override_settings(INVOICE_EXTENDED_WORKFLOW=True)
     def test_finance2_choices_with_approved_by_finance1_status(self):
-        invoice = InvoiceFactory(status=APPROVED_BY_FINANCE_1)
+        invoice = InvoiceFactory(status=APPROVED_BY_FINANCE)
         user = Finance2Factory()
         form = ChangeInvoiceStatusForm(instance=invoice, user=user)
 
-        expected = set(filter_request_choices([CHANGES_REQUESTED_BY_FINANCE_2, APPROVED_BY_FINANCE_2],
-                                              invoice_status_user_choices(user)))
-        actual = set(form.fields['status'].choices)
+        expected = set(
+            filter_request_choices(
+                [CHANGES_REQUESTED_BY_FINANCE_2, APPROVED_BY_FINANCE_2],
+                invoice_status_user_choices(user),
+            )
+        )
+        actual = set(form.fields["status"].choices)
         self.assertEqual(expected, actual)
 
+    @override_settings(INVOICE_EXTENDED_WORKFLOW=True)
     def test_staff_choices_with_changes_requested_by_finance2_status(self):
         invoice = InvoiceFactory(status=CHANGES_REQUESTED_BY_FINANCE_2)
         user = StaffFactory()
         form = ChangeInvoiceStatusForm(instance=invoice, user=user)
 
-        expected = set(filter_request_choices([CHANGES_REQUESTED_BY_FINANCE_1, APPROVED_BY_FINANCE_1],
-                                              invoice_status_user_choices(user)))
-        actual = set(form.fields['status'].choices)
+        expected = set(
+            filter_request_choices(
+                [CHANGES_REQUESTED_BY_FINANCE, APPROVED_BY_FINANCE],
+                invoice_status_user_choices(user),
+            )
+        )
+        actual = set(form.fields["status"].choices)
         self.assertEqual(expected, actual)
 
+    @override_settings(INVOICE_EXTENDED_WORKFLOW=True)
     def test_finance1_choices_with_changes_requested_by_finance2_status(self):
         invoice = InvoiceFactory(status=CHANGES_REQUESTED_BY_FINANCE_2)
         user = FinanceFactory()
         form = ChangeInvoiceStatusForm(instance=invoice, user=user)
 
-        expected = set(filter_request_choices([CHANGES_REQUESTED_BY_FINANCE_1, APPROVED_BY_FINANCE_1],
-                                              invoice_status_user_choices(user)))
-        actual = set(form.fields['status'].choices)
+        expected = set(
+            filter_request_choices(
+                [CHANGES_REQUESTED_BY_FINANCE, APPROVED_BY_FINANCE],
+                invoice_status_user_choices(user),
+            )
+        )
+        actual = set(form.fields["status"].choices)
         self.assertEqual(expected, actual)
 
+    @override_settings(INVOICE_EXTENDED_WORKFLOW=True)
     def test_finance2_choices_with_changes_requested_by_finance2_status(self):
         invoice = InvoiceFactory(status=CHANGES_REQUESTED_BY_FINANCE_2)
         user = Finance2Factory()
         form = ChangeInvoiceStatusForm(instance=invoice, user=user)
 
-        expected = set(filter_request_choices([CHANGES_REQUESTED_BY_FINANCE_1, APPROVED_BY_FINANCE_1],
-                                              invoice_status_user_choices(user)))
-        actual = set(form.fields['status'].choices)
+        expected = set(
+            filter_request_choices(
+                [CHANGES_REQUESTED_BY_FINANCE, APPROVED_BY_FINANCE],
+                invoice_status_user_choices(user),
+            )
+        )
+        actual = set(form.fields["status"].choices)
         self.assertEqual(expected, actual)
 
-    def test_valid_checks_required_for_approved_by_finance1(self):
-        invoice = InvoiceFactory(status=APPROVED_BY_STAFF)
-        user = FinanceFactory()
-        form = ChangeInvoiceStatusForm(data={'status': APPROVED_BY_FINANCE_1}, instance=invoice, user=user)
-        self.assertFalse(form.is_valid(), form.errors.as_text())
 
-        invoice.valid_checks = True
-        form = ChangeInvoiceStatusForm(data={'status': APPROVED_BY_FINANCE_1}, instance=invoice, user=user)
-        self.assertTrue(form.is_valid(), form.errors.as_text())
+class TestChangePAFStatusForm(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        apply_site = ApplySiteFactory()
+        cls.project_setting, _ = ProjectSettings.objects.get_or_create(
+            site_id=apply_site.id
+        )
+        cls.project_setting.use_settings = True
+        cls.project_setting.save()
+        cls.role = PAFReviewerRoleFactory(page=cls.project_setting)
+
+    def test_paf_status_is_required(self):
+        project = ProjectFactory(in_approval=True)
+        user = StaffFactory()
+        form = ChangePAFStatusForm(
+            data={"comment": "comment"}, instance=project, user=user
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("paf_status", form.errors.keys())
+
+    def test_comment_is_not_required(self):
+        project = ProjectFactory(in_approval=True)
+        user = StaffFactory()
+        form = ChangePAFStatusForm(
+            data={"paf_status": APPROVE}, instance=project, user=user
+        )
+        self.assertTrue(form.is_valid())
+        self.assertEqual(form.errors, {})
 
 
 class TestProjectApprovalForm(TestCase):
@@ -268,12 +392,17 @@ class TestProjectApprovalForm(TestCase):
 
         self.assertFalse(project.user_has_updated_details)
 
-        data = {
-            'title': f'{project.title} test',
-            'value': project.value,
-            'proposed_start': project.proposed_start,
-            'proposed_end': project.proposed_end,
-        }
+        # Use querydict for request.POST
+        data = QueryDict("").copy()
+
+        data.update(
+            {
+                "title": f"{project.title} test",
+                "value": project.value,
+                "proposed_start": project.proposed_start,
+                "proposed_end": project.proposed_end,
+            }
+        )
         data.update(address_to_form_data())
         form = ProjectApprovalForm(instance=project, data=data)
         self.assertTrue(form.is_valid(), form.errors.as_text())
@@ -286,19 +415,17 @@ class TestProjectApprovalForm(TestCase):
 class TestCreateInvoiceForm(TestCase):
     def test_adding_invoice(self):
         data = {
-            'paid_value': '10',
-            'date_from': '2018-08-15',
-            'date_to': '2019-08-15',
-            'comment': 'test comment',
-            'amount': 100.0
+            "invoice_number": "00INV_NUM",
+            "invoice_amount": "10",
+            "paid_value": "10",
+            "comment": "test comment",
         }
 
-        document = SimpleUploadedFile('invoice.pdf', BytesIO(b'somebinarydata').read())
-        supporting_documents = [SimpleUploadedFile('invoice.pdf', BytesIO(b'somebinarydata').read())]
-        files = {
-            'document': document,
-            'supporting_documents': supporting_documents
-        }
+        document = SimpleUploadedFile("invoice.pdf", BytesIO(b"somebinarydata").read())
+        supporting_documents = [
+            SimpleUploadedFile("invoice.pdf", BytesIO(b"somebinarydata").read())
+        ]
+        files = {"document": document, "supporting_documents": supporting_documents}
 
         form = CreateInvoiceForm(data=data, files=files)
         self.assertTrue(form.is_valid(), msg=form.errors)
@@ -313,17 +440,15 @@ class TestCreateInvoiceForm(TestCase):
 
     def test_supporting_documents_not_required(self):
         data = {
-            'paid_value': '10',
-            'date_from': '2018-08-15',
-            'date_to': '2019-08-15',
-            'comment': 'test comment',
-            'amount': 100
-
+            "invoice_number": "00INV_NUM",
+            "invoice_amount": "10",
+            "paid_value": "10",
+            "comment": "test comment",
         }
 
-        document = SimpleUploadedFile('invoice.pdf', BytesIO(b'somebinarydata').read())
+        document = SimpleUploadedFile("invoice.pdf", BytesIO(b"somebinarydata").read())
         files = {
-            'document': document,
+            "document": document,
         }
 
         form = CreateInvoiceForm(data=data, files=files)
@@ -335,41 +460,8 @@ class TestCreateInvoiceForm(TestCase):
 
         self.assertEqual(invoice.supporting_documents.count(), 0)
 
-    def test_invoice_dates_are_correct(self):
-        invoice = SimpleUploadedFile('invoice.pdf', BytesIO(b'somebinarydata').read())
-        files = {
-            'document': invoice,
-        }
-
-        form = CreateInvoiceForm(
-            files=files,
-            data={
-                'paid_value': '10',
-                'date_from': '2018-08-15',
-                'date_to': '2019-08-15',
-                'comment': 'test comment',
-                'amount': 100
-
-            }
-        )
-        self.assertTrue(form.is_valid(), msg=form.errors)
-
-        form = CreateInvoiceForm(
-            files=files,
-            data={
-                'paid_value': '10',
-                'date_from': '2019-08-15',
-                'date_to': '2018-08-15',
-                'comment': 'test comment',
-                'amount': 100
-
-            }
-        )
-        self.assertFalse(form.is_valid())
-
 
 class TestEditInvoiceForm(TestCase):
-
     def test_remove_existing_supporting_document(self):
         invoice = InvoiceFactory()
         SupportingDocumentFactory(invoice=invoice, document=invoice.document)
@@ -377,16 +469,16 @@ class TestEditInvoiceForm(TestCase):
 
         form = EditInvoiceForm(
             data={
-                'document': invoice.document,
-                'supporting_documents-uploads': '[]',
-                'date_from': '2018-08-15',
-                'date_to': '2019-08-15',
-                'amount': invoice.amount,
+                "invoice_number": invoice.invoice_number,
+                "invoice_amount": invoice.invoice_amount,
+                "document": invoice.document,
+                "supporting_documents-uploads": "[]",
             },
             files={
-                'supporting_documents': [],
+                "supporting_documents": [],
             },
-            instance=invoice)
+            instance=invoice,
+        )
         self.assertTrue(form.is_valid())
 
         form.save()
@@ -399,17 +491,21 @@ class TestEditInvoiceForm(TestCase):
 
         form = EditInvoiceForm(
             data={
-                'document': invoice.document,
-                'supporting_documents-uploads': json.dumps(
-                    [{"name": supporting_document.document.name,
-                      "size": supporting_document.document.size,
-                      "type": "existing"}]
+                "invoice_number": invoice.invoice_number,
+                "invoice_amount": invoice.invoice_amount,
+                "document": invoice.document,
+                "supporting_documents-uploads": json.dumps(
+                    [
+                        {
+                            "name": supporting_document.document.name,
+                            "size": supporting_document.document.size,
+                            "type": "existing",
+                        }
+                    ]
                 ),
-                'date_from': '2018-08-15',
-                'date_to': '2019-08-15',
-                'amount': invoice.amount,
             },
-            instance=invoice)
+            instance=invoice,
+        )
         self.assertTrue(form.is_valid())
 
         invoice = form.save()
@@ -419,17 +515,18 @@ class TestEditInvoiceForm(TestCase):
         invoice = InvoiceFactory()
         self.assertEqual(invoice.supporting_documents.count(), 0)
 
-        supporting_document = [SimpleUploadedFile('invoice.pdf', BytesIO(b'somebinarydata').read())]
+        supporting_document = [
+            SimpleUploadedFile("invoice.pdf", BytesIO(b"somebinarydata").read())
+        ]
         form = EditInvoiceForm(
             data={
-                'document': invoice.document,
-                'supporting_documents-uploads': '[]',
-                'date_from': '2018-08-15',
-                'date_to': '2019-08-15',
-                'amount': invoice.amount,
+                "invoice_number": invoice.invoice_number,
+                "invoice_amount": invoice.invoice_amount,
+                "document": invoice.document,
+                "supporting_documents-uploads": "[]",
             },
             files={
-                'supporting_documents': supporting_document,
+                "supporting_documents": supporting_document,
             },
             instance=invoice,
         )
@@ -439,7 +536,7 @@ class TestEditInvoiceForm(TestCase):
         self.assertEqual(invoice.supporting_documents.count(), 1)
 
 
-@override_settings(ROOT_URLCONF='hypha.apply.urls')
+@override_settings(ROOT_URLCONF="hypha.apply.urls")
 class TestSelectDocumentForm(TestCase):
     def test_copying_files(self):
         category = DocumentCategoryFactory()
@@ -454,44 +551,46 @@ class TestSelectDocumentForm(TestCase):
 
         form = SelectDocumentForm(
             files,
-            data={'category': category.id, 'document': url},
+            data={"category": category.id, "document": url},
         )
         self.assertTrue(form.is_valid(), form.errors)
 
         form.instance.project = project
         form.save()
 
-        packet_files = project.packet_files.order_by('id')
+        packet_files = project.packet_files.order_by("id")
         self.assertEqual(len(packet_files), 1)
 
         self.assertEqual(packet_files.first().document.read(), files[3].read())
 
 
 class TestStaffContractUploadForm(TestCase):
-    mock_file = mock.MagicMock(spec=SimpleUploadedFile)
-    mock_file.read.return_value = b"fake file contents"
+    mock_file = SimpleUploadedFile("contract.pdf", BytesIO(b"somebinarydata").read())
 
     def test_staff_can_upload_unsigned(self):
-        form = StaffUploadContractForm(data={}, files={'file': self.mock_file})
+        form = StaffUploadContractForm(data={}, files={"file": self.mock_file})
         self.assertTrue(form.is_valid(), form.errors)
-        self.assertFalse(form.cleaned_data.get('is_signed'))
+        self.assertFalse(form.cleaned_data.get("signed_by_applicant"))
 
     def test_staff_can_upload_signed(self):
-        form = StaffUploadContractForm(data={'is_signed': True}, files={'file': self.mock_file})
+        form = StaffUploadContractForm(
+            data={"signed_by_applicant": True}, files={"file": self.mock_file}
+        )
         self.assertTrue(form.is_valid(), form.errors)
-        self.assertTrue(form.cleaned_data.get('is_signed'))
+        self.assertTrue(form.cleaned_data.get("signed_by_applicant"))
 
 
 class TestContractUploadForm(TestCase):
-    mock_file = mock.MagicMock(spec=SimpleUploadedFile)
-    mock_file.read.return_value = b"fake file contents"
+    mock_file = SimpleUploadedFile("contract.pdf", BytesIO(b"somebinarydata").read())
 
     def test_applicant_cant_upload_unsigned(self):
-        form = UploadContractForm(data={}, files={'file': self.mock_file})
+        form = UploadContractForm(data={}, files={"file": self.mock_file})
         self.assertTrue(form.is_valid(), form.errors)
-        self.assertIsNone(form.cleaned_data.get('is_signed'))
+        self.assertIsNone(form.cleaned_data.get("signed_by_applicant"))
 
     def test_applicant_can_upload_signed(self):
-        form = UploadContractForm(data={'is_signed': True}, files={'file': self.mock_file})
+        form = UploadContractForm(
+            data={"signed_by_applicant": True}, files={"file": self.mock_file}
+        )
         self.assertTrue(form.is_valid(), form.errors)
-        self.assertIsNone(form.cleaned_data.get('is_signed'))
+        self.assertIsNone(form.cleaned_data.get("signed_by_applicant"))

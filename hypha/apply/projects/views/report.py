@@ -1,6 +1,5 @@
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import UserPassesTestMixin
-from django.core.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404, redirect
 from django.utils.decorators import method_decorator
 from django.views import View
@@ -17,6 +16,7 @@ from hypha.apply.utils.views import DelegatedViewMixin
 from ..filters import ReportListFilter
 from ..forms import ReportEditForm, ReportFrequencyForm
 from ..models import Report, ReportConfig, ReportPrivateFiles
+from ..permissions import has_permission
 from ..tables import ReportListTable
 
 
@@ -24,13 +24,13 @@ class ReportingMixin:
     def dispatch(self, *args, **kwargs):
         project = self.get_object()
         if project.is_in_progress:
-            if not hasattr(project, 'report_config'):
+            if not hasattr(project, "report_config"):
                 ReportConfig.objects.create(project=project)
 
         return super().dispatch(*args, **kwargs)
 
 
-@method_decorator(login_required, name='dispatch')
+@method_decorator(login_required, name="dispatch")
 class ReportAccessMixin(UserPassesTestMixin):
     model = Report
 
@@ -47,26 +47,28 @@ class ReportAccessMixin(UserPassesTestMixin):
         return False
 
 
-class ReportDetailView(ReportAccessMixin, DetailView):
+@method_decorator(login_required, name="dispatch")
+class ReportDetailView(DetailView):
     model = Report
 
     def dispatch(self, *args, **kwargs):
         report = self.get_object()
-        if not report.current or report.skipped:
-            raise PermissionDenied
+        permission, _ = has_permission(
+            "report_view", self.request.user, object=report, raise_exception=True
+        )
         return super().dispatch(*args, **kwargs)
 
 
-class ReportUpdateView(ReportAccessMixin, UpdateView):
+@method_decorator(login_required, name="dispatch")
+class ReportUpdateView(UpdateView):
     form_class = ReportEditForm
     model = Report
 
     def dispatch(self, *args, **kwargs):
         report = self.get_object()
-        if not report.can_submit:
-            raise PermissionDenied
-        if report.current and self.request.user.is_applicant:
-            raise PermissionDenied
+        permission, _ = has_permission(
+            "report_update", self.request.user, object=report, raise_exception=True
+        )
         return super().dispatch(*args, **kwargs)
 
     def get_initial(self):
@@ -77,16 +79,16 @@ class ReportUpdateView(ReportAccessMixin, UpdateView):
 
         if current:
             return {
-                'public_content': current.public_content,
-                'private_content': current.private_content,
-                'file_list': current.files.all(),
+                "public_content": current.public_content,
+                "private_content": current.private_content,
+                "file_list": current.files.all(),
             }
 
         return {}
 
     def get_form_kwargs(self):
         return {
-            'user': self.request.user,
+            "user": self.request.user,
             **super().get_form_kwargs(),
         }
 
@@ -121,18 +123,15 @@ class ReportUpdateView(ReportAccessMixin, UpdateView):
 
 
 class ReportPrivateMedia(ReportAccessMixin, PrivateMediaView):
-
     def dispatch(self, *args, **kwargs):
-        report_pk = self.kwargs['pk']
+        report_pk = self.kwargs["pk"]
         self.report = get_object_or_404(Report, pk=report_pk)
-        file_pk = kwargs.get('file_pk')
+        file_pk = kwargs.get("file_pk")
         self.document = get_object_or_404(
-            ReportPrivateFiles.objects,
-            report__report=self.report,
-            pk=file_pk
+            ReportPrivateFiles.objects, report__report=self.report, pk=file_pk
         )
 
-        if not hasattr(self.document.report, 'live_for_report'):
+        if not hasattr(self.document.report, "live_for_report"):
             # this is not a document in the live report
             # send the user to the report page to see latest version
             return redirect(self.report.get_absolute_url())
@@ -143,7 +142,7 @@ class ReportPrivateMedia(ReportAccessMixin, PrivateMediaView):
         return self.document.document
 
 
-@method_decorator(staff_required, name='dispatch')
+@method_decorator(staff_required, name="dispatch")
 class ReportSkipView(SingleObjectMixin, View):
     model = Report
 
@@ -164,21 +163,39 @@ class ReportSkipView(SingleObjectMixin, View):
         return redirect(report.project.get_absolute_url())
 
 
-@method_decorator(staff_required, name='dispatch')
+@method_decorator(staff_required, name="dispatch")
 class ReportFrequencyUpdate(DelegatedViewMixin, UpdateView):
     form_class = ReportFrequencyForm
-    context_name = 'update_frequency_form'
+    context_name = "update_frequency_form"
     model = ReportConfig
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
-        kwargs.pop('user')
-        instance = kwargs['instance'].report_config
-        kwargs['instance'] = instance
-        kwargs['initial'] = {
-            'start': instance.current_due_report().end_date,
-        }
+        kwargs.pop("user")
+        project = kwargs["instance"]
+        instance = project.report_config
+        kwargs["instance"] = instance
+        if not instance.disable_reporting:
+            # Current due report can be none for ONE_TIME(does not repeat),
+            # In case of ONE_TIME, either reporting is already completed(last_report exists)
+            # or there should be a current_due_report.
+            if instance.current_due_report():
+                kwargs["initial"] = {
+                    "start": instance.current_due_report().end_date,
+                }
+            else:
+                kwargs["initial"] = {
+                    "start": instance.last_report().end_date,
+                }
+        else:
+            kwargs["initial"] = {
+                "start": project.start_date,
+            }
         return kwargs
+
+    def get_object(self):
+        project = self.get_parent_object()
+        return project.report_config
 
     def get_form(self):
         if self.get_parent_object().is_in_progress:
@@ -187,21 +204,37 @@ class ReportFrequencyUpdate(DelegatedViewMixin, UpdateView):
 
     def form_valid(self, form):
         config = form.instance
-        response = super().form_valid(form)
-        messenger(
-            MESSAGES.REPORT_FREQUENCY_CHANGED,
-            request=self.request,
-            user=self.request.user,
-            source=config.project,
-            related=config,
-        )
+        # 'form-submitted-' is set as form_prefix in DelegateBase view
+        if "disable-reporting" in self.request.POST.get(
+            f"form-submitted-{self.context_name}"
+        ):
+            form.instance.disable_reporting = True
+            form.instance.schedule_start = None
+            response = super().form_valid(form)
+            messenger(
+                MESSAGES.DISABLED_REPORTING,
+                request=self.request,
+                user=self.request.user,
+                source=config.project,
+            )
+        else:
+            form.instance.disable_reporting = False
+            form.instance.schedule_start = form.cleaned_data["start"]
+            response = super().form_valid(form)
+            messenger(
+                MESSAGES.REPORT_FREQUENCY_CHANGED,
+                request=self.request,
+                user=self.request.user,
+                source=config.project,
+                related=config,
+            )
 
         return response
 
 
-@method_decorator(staff_or_finance_required, name='dispatch')
+@method_decorator(staff_or_finance_required, name="dispatch")
 class ReportListView(SingleTableMixin, FilterView):
     queryset = Report.objects.submitted().for_table()
     filterset_class = ReportListFilter
     table_class = ReportListTable
-    template_name = 'application_projects/report_list.html'
+    template_name = "application_projects/report_list.html"

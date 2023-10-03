@@ -1,4 +1,4 @@
-from wagtail.core import blocks
+from wagtail import blocks
 from wagtail.documents.blocks import DocumentChooserBlock
 from wagtail.embeds.blocks import EmbedBlock
 from wagtail.images.blocks import ImageChooserBlock
@@ -62,7 +62,7 @@ class ApplyLinkBlock(blocks.StructBlock):
 
 # Main streamfield block to be inherited by Pages
 class StoryBlock(blocks.StreamBlock):
-    heading = blocks.CharBlock(classname="full title", icon='title')
+    heading = blocks.CharBlock(classname="full title", icon="title")
     paragraph = blocks.RichTextBlock()
     box = BoxBlock()
     more = MoreBlock()
@@ -71,8 +71,7 @@ class StoryBlock(blocks.StreamBlock):
     quote = QuoteBlock()
     embed = EmbedBlock()
     call_to_action = SnippetChooserBlock(
-        'utils.CallToActionSnippet',
-        template="blocks/call_to_action_block.html"
+        "utils.CallToActionSnippet", template="blocks/call_to_action_block.html"
     )
     document = DocumentBlock()
 

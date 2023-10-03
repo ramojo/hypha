@@ -2,12 +2,12 @@
 {% load i18n static workflow_tags review_tags determination_tags %}
 
 {% block extra_css %}
-        <link rel="stylesheet" href="{% static 'css/apply/fancybox.css' %}">
-        {{ reviewer_form.media.css }}
+    <link rel="stylesheet" href="{% static 'css/apply/fancybox.css' %}">
+    {{ reviewer_form.media.css }}
 {% endblock %}
 
 {% block mobile_actions %}
-    <a class="js-actions-toggle button button--white button--full-width button--actions">Actions to take</a>
+    <a class="js-actions-toggle button button--white button--full-width button--actions">{% trans "Actions to take" %}</a>
     <div class="js-actions-sidebar sidebar__inner sidebar__inner--light-blue sidebar__inner--actions sidebar__inner--mobile">
         {% include "funds/includes/admin_primary_actions.html"  %}
     </div>
@@ -27,6 +27,11 @@
     {% if PROJECTS_ENABLED %}
         {% include "funds/includes/create_project_form.html" %}
     {% endif %}
+    {% if object.is_archive %}
+        {% include "funds/includes/unarchive_submission_form.html" %}
+    {% else %}
+        {% include "funds/includes/archive_submission_form.html" %}
+    {% endif %}
     {% include "funds/includes/update_meta_terms_form.html" %}
     {% include "funds/includes/create_reminder_form.html" %}
 {% endblock %}
@@ -39,7 +44,14 @@
     <div class="sidebar__inner">
         <h5>{% trans "Reviews & assignees" %}</h5>
 
-        {% include 'funds/includes/review_sidebar.html' %}
+        <div hx-trigger="revealed" hx-get="{% url "funds:submissions:partial-reviews-card" object.id %}" hx-target="this">
+            <div class="animate-pulse min-h-30">
+                <div class="w-full h-9 bg-gray-200 mb-3"></div>
+                <div class="w-full h-6 bg-gray-200 mb-1"></div>
+                <div class="w-full h-1 bg-gray-200 mb-3"></div>
+                <div class="w-20 h-6 bg-gray-200 mb-3"></div>
+            </div>
+        </div>
 
         <div class="wrapper wrapper--sidebar-buttons">
             {% include 'review/includes/review_button.html' with submission=object class="button--half-width" %}
@@ -73,10 +85,8 @@
     {{ comment_form.media.js }}
     {{ partner_form.media.js }}
     {{ block.super }}
-    <script src="//cdnjs.cloudflare.com/ajax/libs/fancybox/3.4.1/jquery.fancybox.min.js"></script>
+    <script src="{% static 'js/apply/jquery.fancybox.min.js' %}"></script>
     <script src="{% static 'js/apply/fancybox-global.js' %}"></script>
     <script src="{% static 'js/apply/toggle-actions-panel.js' %}"></script>
-    <script src="{% static 'js/apply/toggle-reviewers.js' %}"></script>
-    <script src="{% static 'js/apply/toggle-sidebar.js' %}"></script>
     <script src="{% static 'js/apply/toggle-related.js' %}"></script>
 {% endblock %}

@@ -6,24 +6,20 @@
 {% block title %}{% trans "Projects" %}{% endblock %}
 
 {% block content %}
-<div class="admin-bar">
-    <div class="admin-bar__inner wrapper--search">
-        {% block page_header %}
-            <div>
-                <h1 class="gamma heading heading--no-margin heading--bold">{% trans "All Projects" %}</h1>
-            </div>
-        {% endblock %}
-    </div>
-</div>
 
-<div class="wrapper wrapper--large wrapper--inner-space-medium">
-    {% if table %}
-    {% include "funds/includes/table_filter_and_search.html" with filter_form=filter_form search_term=search_term search_placeholder="projects" use_search=True filter_action=filter_action use_batch_actions=True filter_classes="filters-open" %}
-    {% render_table table %}
-    {% else %}
-    <p>{% trans "No Projects Available." %}</p>
-    {% endif %}
-</div>
+    {% adminbar %}
+        {% slot header %}{% trans "All Projects" %} ({{ table.rows|length }}){% endslot %}
+        {% slot sub_heading %}{% trans "View, Search and filter all projects" %}{% endslot %}
+    {% endadminbar %}
+
+    <div class="wrapper wrapper--large wrapper--inner-space-medium">
+        {% if table %}
+            {% include "funds/includes/table_filter_and_search.html" with filter_form=filter_form search_term=search_term search_placeholder="projects" use_search=True filter_action=filter_action use_batch_actions=True filter_classes="filters-open" %}
+            {% render_table table %}
+        {% else %}
+            <p>{% trans "No Projects Available." %}</p>
+        {% endif %}
+    </div>
 
 {% endblock content %}
 

@@ -1,38 +1,49 @@
-from django.urls import re_path, reverse
-from wagtail.core import hooks
+from django.urls import re_path
+from wagtail import hooks
+from wagtail.models import Site
 
-from hypha.apply.utils.notifications import slack_notify
+from hypha.apply.activity.messaging import MESSAGES, messenger
 
-from .admin_views import index
+from .admin_views import CustomGroupViewSet, index
+from .utils import send_activation_email
 
 
-@hooks.register('register_admin_urls')
+@hooks.register("register_admin_urls")
 def register_admin_urls():
     return [
-        re_path(r'^users/$', index, name='index'),
+        re_path(r"^users/$", index, name="index"),
     ]
 
 
-@hooks.register('after_create_user')
+@hooks.register("register_admin_viewset")
+def register_viewset():
+    return CustomGroupViewSet("groups", url_prefix="groups")
+
+
+@hooks.register("after_create_user")
 def notify_after_create_user(request, user):
-    slack_notify(
-        message=f'{request.user} has crated a new account for {user}.',
+    messenger(
+        MESSAGES.STAFF_ACCOUNT_CREATED,
         request=request,
-        related=user,
-        path=reverse('wagtailusers_users:edit', args=(user.id,))
+        user=request.user,
+        source=user,
     )
 
+    site = Site.find_for_request(request)
+    send_activation_email(user, site)
 
-@hooks.register('after_edit_user')
+
+@hooks.register("after_edit_user")
 def notify_after_edit_user(request, user):
-    roles = list(user.groups.values_list('name', flat=True))
+    roles = list(user.groups.values_list("name", flat=True))
     if user.is_superuser:
-        roles.append('Administrator')
+        roles.append("Administrator")
     if roles:
-        roles = ', '.join(roles)
-        slack_notify(
-            message=f'{request.user} has edited the account for {user} that now have these roles: {roles}.',
+        roles = ", ".join(roles)
+        messenger(
+            MESSAGES.STAFF_ACCOUNT_EDITED,
             request=request,
-            related=user,
-            path=reverse('wagtailusers_users:edit', args=(user.id,))
+            user=request.user,
+            source=user,
+            roles=roles,
         )

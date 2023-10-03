@@ -52,6 +52,14 @@
             background-color: $color--mint;
         }
 
+        &--submission {
+            background-color: $color--green;
+        }
+
+        &--project {
+            background-color: $color--mint;
+        }
+
         &--mobile {
             display: block;
             margin-right: 10px;
@@ -136,7 +144,8 @@
 
             span {
                 &:first-child {
-                    &::after { // stylelint-disable-line max-nesting-depth
+                    // stylelint-disable-next-line max-nesting-depth
+                    &::after {
                         @include triangle(right, $color--black-50, 4px);
                         display: inline-block;
                         margin: 0 5px 0 10px;
@@ -152,11 +161,13 @@
     }
 
     &__related-item {
+        white-space: nowrap;
+
         svg {
             width: 10px;
             height: 14px;
             margin-left: 10px;
-            margin-top: .35em;
+            margin-top: 0.35em;
             fill: $color--dark-blue;
         }
     }
@@ -191,7 +202,11 @@
         width: 100%;
         text-align: center;
         margin: 0;
-        padding: 3em 0 .5em;
-        background-image: linear-gradient(to bottom, $color--white-10, $color--white);
+        padding: 3em 0 0.5em;
+        background-image: linear-gradient(
+            to bottom,
+            $color--white-10,
+            $color--white
+        );
     }
 }

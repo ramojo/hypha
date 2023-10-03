@@ -4,29 +4,31 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.db.models import Case, Value, When
 from django.db.models.functions import Concat
+from django.utils import timezone
+from django.utils.translation import gettext as _
 
 from .options import MESSAGES
 
-COMMENT = 'comment'
-ACTION = 'action'
+COMMENT = "comment"
+ACTION = "action"
 
 ACTIVITY_TYPES = {
-    COMMENT: 'Comment',
-    ACTION: 'Action',
+    COMMENT: "Comment",
+    ACTION: "Action",
 }
 
-APPLICANT = 'applicant'
-TEAM = 'team'
-REVIEWER = 'reviewers'
-PARTNER = 'partners'
-ALL = 'all'
+APPLICANT = "applicant"
+TEAM = "team"
+REVIEWER = "reviewers"
+PARTNER = "partners"
+ALL = "all"
 
 VISIBILITY = {
-    APPLICANT: 'Applicant(s)',
-    TEAM: 'Staff',
-    REVIEWER: 'Reviewers',
-    PARTNER: 'Partners',
-    ALL: 'All',
+    APPLICANT: "Applicants",
+    TEAM: "Staff only",
+    REVIEWER: "Reviewers",
+    PARTNER: "Partners",
+    ALL: "All",
 }
 
 
@@ -35,11 +37,12 @@ class BaseActivityQuerySet(models.QuerySet):
         # To hide reviews from the applicant's activity feed
         # Todo: It is just for historic data and not be needed for new data after this.
         from .messaging import ActivityAdapter
+
         messages = ActivityAdapter.messages
         if user.is_applicant:
-            return self.exclude(
-                message=messages.get(MESSAGES.NEW_REVIEW)
-            ).filter(visibility__in=self.model.visibility_for(user))
+            return self.exclude(message=messages.get(MESSAGES.NEW_REVIEW)).filter(
+                visibility__in=self.model.visibility_for(user)
+            )
 
         return self.filter(visibility__in=self.model.visibility_for(user))
 
@@ -54,6 +57,11 @@ class ActivityQuerySet(BaseActivityQuerySet):
     def actions(self):
         return self.filter(type=ACTION)
 
+    def latest(self):
+        return self.filter(
+            timestamp__gte=(timezone.now() - timezone.timedelta(days=30))
+        )
+
 
 class ActivityBaseManager(models.Manager):
     def create(self, **kwargs):
@@ -61,9 +69,13 @@ class ActivityBaseManager(models.Manager):
         return super().create(**kwargs)
 
     def get_queryset(self):
-        return super().get_queryset().filter(
-            type=self.type,
-            current=True,
+        return (
+            super()
+            .get_queryset()
+            .filter(
+                type=self.type,
+                current=True,
+            )
         )
 
 
@@ -88,12 +100,20 @@ class Activity(models.Model):
     type = models.CharField(choices=ACTIVITY_TYPES.items(), max_length=30)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
 
-    source_content_type = models.ForeignKey(ContentType, blank=True, null=True, on_delete=models.CASCADE, related_name='activity_source')
+    source_content_type = models.ForeignKey(
+        ContentType,
+        blank=True,
+        null=True,
+        on_delete=models.CASCADE,
+        related_name="activity_source",
+    )
     source_object_id = models.PositiveIntegerField(blank=True, null=True, db_index=True)
-    source = GenericForeignKey('source_content_type', 'source_object_id')
+    source = GenericForeignKey("source_content_type", "source_object_id")
 
     message = models.TextField()
-    visibility = models.CharField(choices=list(VISIBILITY.items()), default=APPLICANT, max_length=30)
+    visibility = models.CharField(
+        choices=list(VISIBILITY.items()), default=APPLICANT, max_length=30
+    )
 
     # Fields for handling versioning of the comment activity models
     edited = models.DateTimeField(default=None, null=True)
@@ -101,17 +121,25 @@ class Activity(models.Model):
     previous = models.ForeignKey("self", on_delete=models.CASCADE, null=True)
 
     # Fields for generic relations to other objects. related_object should implement `get_absolute_url`
-    related_content_type = models.ForeignKey(ContentType, blank=True, null=True, on_delete=models.CASCADE, related_name='activity_related')
+    related_content_type = models.ForeignKey(
+        ContentType,
+        blank=True,
+        null=True,
+        on_delete=models.CASCADE,
+        related_name="activity_related",
+    )
     related_object_id = models.PositiveIntegerField(blank=True, null=True)
-    related_object = GenericForeignKey('related_content_type', 'related_object_id')
+    related_object = GenericForeignKey("related_content_type", "related_object_id")
 
     objects = models.Manager.from_queryset(ActivityQuerySet)()
     comments = CommentManger.from_queryset(CommentQueryset)()
     actions = ActionManager.from_queryset(ActionQueryset)()
 
+    wagtail_reference_index_ignore = True
+
     class Meta:
-        ordering = ['-timestamp']
-        base_manager_name = 'objects'
+        ordering = ["-timestamp"]
+        base_manager_name = "objects"
 
     @property
     def priviledged(self):
@@ -129,31 +157,60 @@ class Activity(models.Model):
     @classmethod
     def visibility_for(cls, user):
         if user.is_apply_staff:
-            return [APPLICANT, TEAM, REVIEWER, PARTNER, ALL]
+            return [TEAM, APPLICANT, REVIEWER, PARTNER, ALL]
         if user.is_reviewer:
             return [REVIEWER, ALL]
-        if user.is_partner:
-            return [PARTNER, ALL]
+        if user.is_finance or user.is_contracting:
+            # for project part
+            return [TEAM, APPLICANT, REVIEWER, PARTNER, ALL]
+        if user.is_applicant or user.is_partner:
+            return [
+                APPLICANT,
+                PARTNER,
+                ALL,
+            ]  # using partner just for existing activities.
 
-        return [APPLICANT, ALL]
+        return [ALL]
 
     @classmethod
     def visibility_choices_for(cls, user):
-        return [(choice, VISIBILITY[choice]) for choice in cls.visibility_for(user)]
+        if user.is_applicant or user.is_partner:
+            return [(APPLICANT, VISIBILITY[APPLICANT])]
+        if user.is_reviewer:
+            return [(REVIEWER, VISIBILITY[REVIEWER])]
+        if user.is_apply_staff:
+            return [
+                (TEAM, VISIBILITY[TEAM]),
+                (APPLICANT, VISIBILITY[APPLICANT]),
+                (REVIEWER, VISIBILITY[REVIEWER]),
+                (ALL, VISIBILITY[ALL]),
+            ]
+        if user.is_finance or user.is_contracting:
+            return [(TEAM, VISIBILITY[TEAM]), (APPLICANT, VISIBILITY[APPLICANT])]
+        return [(ALL, VISIBILITY[ALL])]
 
 
 class Event(models.Model):
     """Model to track when messages are triggered"""
 
+    wagtail_reference_index_ignore = True
+
     when = models.DateTimeField(auto_now_add=True)
-    type = models.CharField(choices=MESSAGES.choices(), max_length=50)
-    by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True)
-    content_type = models.ForeignKey(ContentType, blank=True, null=True, on_delete=models.CASCADE)
+    type = models.CharField(_("verb"), choices=MESSAGES.choices, max_length=50)
+    by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True
+    )
+    content_type = models.ForeignKey(
+        ContentType, blank=True, null=True, on_delete=models.CASCADE
+    )
     object_id = models.PositiveIntegerField(blank=True, null=True)
-    source = GenericForeignKey('content_type', 'object_id')
+    source = GenericForeignKey("content_type", "object_id")
 
     def __str__(self):
-        return ' '.join([self.get_type_display(), 'by:', str(self.by), 'on:', self.source.title])
+        if self.source and hasattr(self.source, "title"):
+            return f"{self.by} {self.get_type_display()} - {self.source.title }"
+        else:
+            return f"{self.by} {self.get_type_display()}"
 
 
 class MessagesQueryset(models.QuerySet):
@@ -161,9 +218,9 @@ class MessagesQueryset(models.QuerySet):
         if status:
             return self.update(
                 status=Case(
-                    When(status='', then=Value(status)),
-                    default=Concat('status', Value('<br />' + status)),
-                    output_field=models.TextField()
+                    When(status="", then=Value(status)),
+                    default=Concat("status", Value("<br />" + status)),
+                    output_field=models.TextField(),
                 ),
             )
 
@@ -178,15 +235,20 @@ class Message(models.Model):
     recipient = models.CharField(max_length=250)
     event = models.ForeignKey(Event, on_delete=models.CASCADE)
     status = models.TextField()
-    external_id = models.CharField(max_length=75, null=True, blank=True)  # Stores the id of the object from an external system
-
+    external_id = models.CharField(
+        max_length=75, null=True, blank=True
+    )  # Stores the id of the object from an external system
+    sent_in_email_digest = models.BooleanField(default=False)
     objects = MessagesQueryset.as_manager()
+
+    def __str__(self):
+        return f"[{self.type}][{self.status}] {self.content}"
 
     def update_status(self, status):
         if status:
             self.status = Case(
-                When(status='', then=Value(status)),
-                default=Concat('status', Value('<br />' + status)),
-                output_field=models.TextField()
+                When(status="", then=Value(status)),
+                default=Concat("status", Value("<br />" + status)),
+                output_field=models.TextField(),
             )
             self.save()

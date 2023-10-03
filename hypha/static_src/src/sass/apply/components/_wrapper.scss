@@ -3,21 +3,25 @@
 
     &--small {
         max-width: $wrapper--small;
-        margin: 0 auto;
+        margin-left: auto;
+        margin-right: auto;
     }
 
     &--medium {
         max-width: $wrapper--medium;
-        margin: 0 auto;
+        margin-left: auto;
+        margin-right: auto;
     }
 
     &--large {
         max-width: $site-width;
-        margin: 0 auto;
+        margin-left: auto;
+        margin-right: auto;
     }
 
     &--main {
         padding: 0 $mobile-gutter;
+        min-height: calc(100vh - 260px - 160px); // viewport - (header + footer)
 
         @include media-query(desktop) {
             padding: 0;
@@ -62,7 +66,7 @@
     }
 
     &--light-grey-bg {
-        background-color: $color--light-grey;
+        background-color: var(--color-bg-default);
     }
 
     &--media-boxes {
@@ -90,11 +94,11 @@
     }
 
     &--form {
-        padding: 20px;
-        margin: 20px auto;
+        padding: 0;
+        margin: 2em auto;
 
-        @include media-query(tablet-portrait) {
-            padding: 2rem 17rem 2rem 5rem;
+        @include media-query(tablet-landscape) {
+            padding: 2rem 17rem 2rem 0;
             margin: 1rem auto 3rem;
         }
     }
@@ -119,7 +123,7 @@
 
         @include media-query(tablet-portrait) {
             padding-bottom: 3rem;
-            margin-bottom: 3rem;
+            margin-bottom: 0;
         }
     }
 
@@ -215,7 +219,6 @@
     &--sidebar-buttons {
         display: flex;
         justify-content: space-between;
-        margin-bottom: 20px;
     }
 
     &--cta-box {
@@ -236,7 +239,7 @@
     }
 
     &--status-bar-outer {
-        padding: 20px;
+        padding: 20px 0;
         background-color: $color--white;
         border-bottom: 3px solid $color--light-grey;
     }
@@ -284,7 +287,7 @@
         padding: 20px 0;
 
         @include media-query(tablet-portrait) {
-            padding: 4rem 0;
+            padding: 2rem 0;
         }
     }
 

@@ -12,10 +12,6 @@
     ol {
         list-style: inside decimal;
     }
-
-    @include media-query(tablet-portrait) {
-        max-width: 70%;
-    }
 }
 
 .wmd-button-row {
@@ -41,7 +37,7 @@
 
     & > span {
         display: inline-block;
-        background-image: url('./../../images/editor-buttons.png');
+        background-image: url("./../../images/editor-buttons.png");
         background-repeat: no-repeat;
         background-position: 0 0;
         width: 20px;
@@ -55,6 +51,6 @@
 
 .wmd-prompt-dialog {
     background-color: $color--light-grey;
-    padding: .5em;
+    padding: 0.5em;
     border: 4px solid $color--primary;
 }

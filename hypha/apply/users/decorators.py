@@ -6,15 +6,23 @@ from .utils import can_use_oauth_check
 
 def require_oauth_whitelist(view_func):
     """Simple decorator that limits the use of OAuth to the configure whitelisted domains"""
+
     def decorated_view(request, *args, **kwargs):
         if can_use_oauth_check(request.user):
             return view_func(request, *args, **kwargs)
         raise PermissionDenied
+
     return decorated_view
 
 
 def is_apply_staff(user):
     if not user.is_apply_staff:
+        raise PermissionDenied
+    return True
+
+
+def is_apply_staff_admin(user):
+    if not user.is_apply_staff_admin:
         raise PermissionDenied
     return True
 
@@ -31,19 +39,46 @@ def is_apply_staff_or_finance(user):
     return True
 
 
+def is_apply_staff_or_finance_or_contracting(user):
+    if not (user.is_apply_staff or user.is_finance or user.is_contracting):
+        raise PermissionDenied
+    return True
+
+
 def is_approver(user):
     if not user.is_approver:
         raise PermissionDenied
     return True
 
 
+def is_contracting_approver(user):
+    if not user.is_approver or not user.is_contracting:
+        raise PermissionDenied
+    return True
+
+
 staff_required = [login_required, user_passes_test(is_apply_staff)]
+
+staff_admin_required = [login_required, user_passes_test(is_apply_staff_admin)]
 
 finance_required = [login_required, user_passes_test(is_finance)]
 
-staff_or_finance_required = [login_required, user_passes_test(is_apply_staff_or_finance)]
+staff_or_finance_required = [
+    login_required,
+    user_passes_test(is_apply_staff_or_finance),
+]
 
 approver_required = [login_required, user_passes_test(is_approver)]
+
+staff_or_finance_or_contracting_required = [
+    login_required,
+    user_passes_test(is_apply_staff_or_finance_or_contracting),
+]
+
+contracting_approver_required = [
+    login_required,
+    user_passes_test(is_contracting_approver),
+]
 
 
 def superuser_decorator(fn):

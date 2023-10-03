@@ -7,6 +7,7 @@ import responses
 from django.contrib.messages import get_messages
 from django.core import mail
 from django.test import TestCase, override_settings
+from django_slack.utils import get_backend
 
 from hypha.apply.funds.tests.factories import (
     ApplicationSubmissionFactory,
@@ -23,26 +24,19 @@ from hypha.apply.users.tests.factories import (
 )
 from hypha.apply.utils.testing import make_request
 
-from ..messaging import (
-    MESSAGES,
-    ActivityAdapter,
-    AdapterBase,
-    EmailAdapter,
-    MessengerBackend,
-    SlackAdapter,
-    neat_related,
-)
+from ..adapters import ActivityAdapter, AdapterBase, EmailAdapter, SlackAdapter
+from ..adapters.base import neat_related
+from ..messaging import MessengerBackend
 from ..models import ALL, TEAM, Activity, Event, Message
+from ..options import MESSAGES
 from .factories import CommentFactory, EventFactory, MessageFactory
 
 
 class TestAdapter(AdapterBase):
     """A test class which will pass the message type to send_message"""
-    adapter_type = 'Test Adapter'
-    messages = {
-        enum: enum.value
-        for enum in MESSAGES.__members__.values()
-    }
+
+    adapter_type = "Test Adapter"
+    messages = {enum: enum.value for enum in MESSAGES.__members__.values()}
 
     def send_message(self, message, **kwargs):
         pass
@@ -54,22 +48,22 @@ class TestAdapter(AdapterBase):
         pass
 
 
-@override_settings(ROOT_URLCONF='hypha.apply.urls')
+@override_settings(ROOT_URLCONF="hypha.apply.urls")
 class AdapterMixin(TestCase):
     adapter = None
     source_factory = None
 
     def process_kwargs(self, message_type, **kwargs):
-        if 'user' not in kwargs:
-            kwargs['user'] = UserFactory()
-        if 'source' not in kwargs:
-            kwargs['source'] = self.source_factory()
-        if 'request' not in kwargs:
-            kwargs['request'] = make_request()
+        if "user" not in kwargs:
+            kwargs["user"] = UserFactory()
+        if "source" not in kwargs:
+            kwargs["source"] = self.source_factory()
+        if "request" not in kwargs:
+            kwargs["request"] = make_request()
         if message_type in neat_related:
-            kwargs['related'] = kwargs.get('related', 'a thing')
+            kwargs["related"] = kwargs.get("related", "a thing")
         else:
-            kwargs['related'] = None
+            kwargs["related"] = None
 
         return kwargs
 
@@ -77,7 +71,7 @@ class AdapterMixin(TestCase):
         if not adapter:
             adapter = self.adapter
         kwargs = self.process_kwargs(message_type, **kwargs)
-        event = EventFactory(source=kwargs['source'])
+        event = EventFactory(source=kwargs["source"])
         adapter.process(message_type, event=event, **kwargs)
 
 
@@ -86,10 +80,10 @@ class TestBaseAdapter(AdapterMixin, TestCase):
     source_factory = ApplicationSubmissionFactory
 
     def setUp(self):
-        patched_class = patch.object(TestAdapter, 'send_message')
+        patched_class = patch.object(TestAdapter, "send_message")
         self.mock_adapter = patched_class.start()
         self.adapter = TestAdapter()
-        self.adapter.send_message.return_value = 'dummy_message'
+        self.adapter.send_message.return_value = "dummy_message"
         self.addCleanup(patched_class.stop)
 
     def test_can_send_a_message(self):
@@ -100,13 +94,13 @@ class TestBaseAdapter(AdapterMixin, TestCase):
         self.assertEqual(self.adapter.send_message.call_args[0], (message_type.value,))
 
     def test_doesnt_send_a_message_if_not_configured(self):
-        self.adapter_process('this_is_not_a_message_type')
+        self.adapter_process("this_is_not_a_message_type")
 
         self.adapter.send_message.assert_not_called()
 
     def test_calls_method_if_avaliable(self):
-        method_name = 'new_method'
-        return_message = 'Returned message'
+        method_name = "new_method"
+        return_message = "Returned message"
         setattr(self.adapter, method_name, lambda **kw: return_message)
         self.adapter.messages[method_name] = method_name
 
@@ -117,7 +111,7 @@ class TestBaseAdapter(AdapterMixin, TestCase):
 
     def test_that_kwargs_passed_to_send_message(self):
         message_type = MESSAGES.UPDATE_LEAD
-        kwargs = {'test': 'that', 'these': 'exist'}
+        kwargs = {"test": "that", "these": "exist"}
         self.adapter_process(message_type, **kwargs)
 
         self.adapter.send_message.assert_called_once()
@@ -126,9 +120,9 @@ class TestBaseAdapter(AdapterMixin, TestCase):
 
     def test_that_message_is_formatted(self):
         message_type = MESSAGES.UPDATE_LEAD
-        message = 'message value'
+        message = "message value"
 
-        with patch.dict(self.adapter.messages, {message_type: '{message_to_format}'}):
+        with patch.dict(self.adapter.messages, {message_type: "{message_to_format}"}):
             self.adapter_process(message_type, message_to_format=message)
 
         self.adapter.send_message.assert_called_once()
@@ -137,23 +131,24 @@ class TestBaseAdapter(AdapterMixin, TestCase):
     def test_can_include_extra_kwargs(self):
         message_type = MESSAGES.UPDATE_LEAD
 
-        with patch.dict(self.adapter.messages, {message_type: '{extra}'}):
-            with patch.object(self.adapter, 'extra_kwargs', return_value={'extra': 'extra'}):
+        with patch.dict(self.adapter.messages, {message_type: "{extra}"}):
+            with patch.object(
+                self.adapter, "extra_kwargs", return_value={"extra": "extra"}
+            ):
                 self.adapter_process(message_type)
 
         self.adapter.send_message.assert_called_once()
-        self.assertTrue('extra' in self.adapter.send_message.call_args[1])
+        self.assertTrue("extra" in self.adapter.send_message.call_args[1])
 
     @override_settings(SEND_MESSAGES=False)
     def test_django_messages_used(self):
         request = make_request()
-
         self.adapter_process(MESSAGES.UPDATE_LEAD, request=request)
 
         messages = list(get_messages(request))
-        self.assertEqual(len(messages), 1)
-        self.assertTrue(MESSAGES.UPDATE_LEAD.value in messages[0].message)
-        self.assertTrue(self.adapter.adapter_type in messages[0].message)
+        assert len(messages) == 1
+        assert MESSAGES.UPDATE_LEAD.value in messages[0].message
+        assert self.adapter.adapter_type in messages[0].message
 
 
 class TestMessageBackendApplication(TestCase):
@@ -163,10 +158,10 @@ class TestMessageBackendApplication(TestCase):
         self.mocked_adapter = Mock(AdapterBase)
         self.backend = MessengerBackend
         self.kwargs = {
-            'related': None,
-            'request': None,
-            'user': UserFactory(),
-            'source': self.source_factory(),
+            "related": None,
+            "request": None,
+            "user": UserFactory(),
+            "source": self.source_factory(),
         }
 
     def test_message_sent_to_adapter(self):
@@ -175,7 +170,9 @@ class TestMessageBackendApplication(TestCase):
 
         messenger(MESSAGES.UPDATE_LEAD, **self.kwargs)
 
-        adapter.process.assert_called_once_with(MESSAGES.UPDATE_LEAD, Event.objects.first(), **self.kwargs)
+        adapter.process.assert_called_once_with(
+            MESSAGES.UPDATE_LEAD, Event.objects.first(), **self.kwargs
+        )
 
     def test_message_sent_to_all_adapter(self):
         adapters = [self.mocked_adapter(), self.mocked_adapter()]
@@ -196,7 +193,9 @@ class TestMessageBackendApplication(TestCase):
 
         self.assertEqual(Event.objects.count(), 1)
         self.assertEqual(Event.objects.first().type, MESSAGES.UPDATE_LEAD.name)
-        self.assertEqual(Event.objects.first().get_type_display(), MESSAGES.UPDATE_LEAD.value)
+        self.assertEqual(
+            Event.objects.first().get_type_display(), MESSAGES.UPDATE_LEAD.label
+        )
         self.assertEqual(Event.objects.first().by, user)
 
 
@@ -210,11 +209,13 @@ class TestActivityAdapter(TestCase):
         self.adapter = ActivityAdapter()
 
     def test_activity_created(self):
-        message = 'test message'
+        message = "test message"
         user = UserFactory()
         submission = ApplicationSubmissionFactory()
 
-        self.adapter.send_message(message, user=user, source=submission, sources=[], related=None)
+        self.adapter.send_message(
+            message, user=user, source=submission, sources=[], related=None
+        )
 
         self.assertEqual(Activity.objects.count(), 1)
         activity = Activity.objects.first()
@@ -227,24 +228,24 @@ class TestActivityAdapter(TestCase):
 
         message = self.adapter.reviewers_updated([assigned_reviewer], [])
 
-        self.assertTrue('Added' in message)
-        self.assertFalse('Removed' in message)
+        self.assertTrue("Added" in message)
+        self.assertFalse("Removed" in message)
         self.assertTrue(str(assigned_reviewer.reviewer) in message)
 
     def test_reviewers_message_no_added(self):
         assigned_reviewer = AssignedReviewersFactory()
         message = self.adapter.reviewers_updated([], [assigned_reviewer])
 
-        self.assertFalse('Added' in message)
-        self.assertTrue('Removed' in message)
+        self.assertFalse("Added" in message)
+        self.assertTrue("Removed" in message)
         self.assertTrue(str(assigned_reviewer.reviewer) in message)
 
     def test_reviewers_message_both(self):
         added, removed = AssignedReviewersFactory.create_batch(2)
         message = self.adapter.reviewers_updated([added], [removed])
 
-        self.assertTrue('Added' in message)
-        self.assertTrue('Removed' in message)
+        self.assertTrue("Added" in message)
+        self.assertTrue("Removed" in message)
         self.assertTrue(str(added.reviewer) in message)
         self.assertTrue(str(removed.reviewer) in message)
 
@@ -263,19 +264,23 @@ class TestActivityAdapter(TestCase):
         self.assertTrue(str(without_role.reviewer) in message)
 
     def test_internal_transition_kwarg_for_invisible_transition(self):
-        submission = ApplicationSubmissionFactory(status='post_review_discussion')
-        kwargs = self.adapter.extra_kwargs(MESSAGES.TRANSITION, source=submission, sources=None)
+        submission = ApplicationSubmissionFactory(status="post_review_discussion")
+        kwargs = self.adapter.extra_kwargs(
+            MESSAGES.TRANSITION, source=submission, sources=None
+        )
 
-        self.assertEqual(kwargs['visibility'], TEAM)
+        self.assertEqual(kwargs["visibility"], TEAM)
 
     def test_public_transition_kwargs(self):
         submission = ApplicationSubmissionFactory()
-        kwargs = self.adapter.extra_kwargs(MESSAGES.TRANSITION, source=submission, sources=None)
+        kwargs = self.adapter.extra_kwargs(
+            MESSAGES.TRANSITION, source=submission, sources=None
+        )
 
-        self.assertNotIn('visibility', kwargs)
+        self.assertNotIn("visibility", kwargs)
 
     def test_handle_transition_public_to_public(self):
-        submission = ApplicationSubmissionFactory(status='more_info')
+        submission = ApplicationSubmissionFactory(status="more_info")
         old_phase = submission.workflow.phases_for()[0]
 
         message = self.adapter.handle_transition(old_phase, submission)
@@ -287,7 +292,7 @@ class TestActivityAdapter(TestCase):
         self.assertIn(old_phase.public_name, message[ALL])
 
     def test_handle_transition_to_private_to_public(self):
-        submission = ApplicationSubmissionFactory(status='more_info')
+        submission = ApplicationSubmissionFactory(status="more_info")
         old_phase = submission.workflow.phases_for()[1]
 
         message = self.adapter.handle_transition(old_phase, submission)
@@ -299,7 +304,7 @@ class TestActivityAdapter(TestCase):
         self.assertIn(old_phase.public_name, message[ALL])
 
     def test_handle_transition_to_public_to_private(self):
-        submission = ApplicationSubmissionFactory(status='internal_review')
+        submission = ApplicationSubmissionFactory(status="internal_review")
         old_phase = submission.workflow.phases_for()[0]
 
         message = self.adapter.handle_transition(old_phase, submission)
@@ -307,17 +312,19 @@ class TestActivityAdapter(TestCase):
         self.assertIn(submission.phase.display_name, message)
         self.assertIn(old_phase.display_name, message)
 
-    def test_lead_not_saved_on_activity(self):
+    def test_lead_saved_on_activity(self):
         submission = ApplicationSubmissionFactory()
         user = UserFactory()
-        self.adapter.send_message('a message', user=user, source=submission, sources=[], related=user)
+        self.adapter.send_message(
+            "a message", user=user, source=submission, sources=[], related=user
+        )
         activity = Activity.objects.first()
-        self.assertEqual(activity.related_object, None)
+        self.assertEqual(activity.related_object, user)
 
     def test_review_saved_on_activity(self):
         review = ReviewFactory()
         self.adapter.send_message(
-            'a message',
+            "a message",
             user=review.author.reviewer,
             source=review.submission,
             sources=[],
@@ -330,134 +337,146 @@ class TestActivityAdapter(TestCase):
 class TestSlackAdapter(AdapterMixin, TestCase):
     source_factory = ApplicationSubmissionFactory
 
-    target_url = 'https://my-slack-backend.com/incoming/my-very-secret-key'
-    target_room = '#<ROOM ID>'
+    backend = "django_slack.backends.TestBackend"
+    target_url = "https://my-slack-backend.com/incoming/my-very-secret-key"
+    target_room = "#<ROOM ID>"
+    token = "fake-token"
 
     @override_settings(
-        SLACK_DESTINATION_URL=target_url,
+        SLACK_ENDPOINT_URL=target_url,
         SLACK_DESTINATION_ROOM=None,
+        SLACK_BACKEND=backend,
+        SLACK_TOKEN=token,
     )
-    @responses.activate
     def test_cant_send_with_no_room(self):
+        error_message = "Missing configuration: Room ID"
         adapter = SlackAdapter()
         submission = ApplicationSubmissionFactory()
-        adapter.send_message('my message', '', source=submission)
-        self.assertEqual(len(responses.calls), 0)
+        messages = adapter.send_message("my message", "", source=submission)
+        self.assertEqual(messages, error_message)
 
     @override_settings(
-        SLACK_DESTINATION_URL=None,
+        SLACK_ENDPOINT_URL=target_url,
         SLACK_DESTINATION_ROOM=target_room,
+        SLACK_BACKEND=backend,
+        SLACK_TOKEN=None,
     )
-    @responses.activate
-    def test_cant_send_with_no_url(self):
+    def test_cant_send_with_no_token(self):
+        error_message = "Missing configuration: Slack Token"
         adapter = SlackAdapter()
         submission = ApplicationSubmissionFactory()
-        adapter.send_message('my message', '', source=submission)
-        self.assertEqual(len(responses.calls), 0)
+        messages = adapter.send_message("my message", "", source=submission)
+        self.assertEqual(messages, error_message)
 
     @override_settings(
-        SLACK_DESTINATION_URL=target_url,
+        SLACK_ENDPOINT_URL=target_url,
         SLACK_DESTINATION_ROOM=target_room,
+        SLACK_BACKEND=backend,
+        SLACK_TOKEN=token,
     )
-    @responses.activate
     def test_correct_payload(self):
-        responses.add(responses.POST, self.target_url, status=200, body='OK')
+        backend = get_backend()
+        backend.reset_messages()
         submission = ApplicationSubmissionFactory()
         adapter = SlackAdapter()
-        message = 'my message'
-        adapter.send_message(message, '', source=submission)
-        self.assertEqual(len(responses.calls), 1)
-        self.assertDictEqual(
-            json.loads(responses.calls[0].request.body),
-            {
-                'room': [self.target_room],
-                'message': message,
-            }
-        )
+        message = "my message"
+        adapter.send_message(message, "", source=submission)
+        messages = backend.retrieve_messages()
+        self.assertEqual(len(messages), 1)
+        message_payload = json.loads(messages[0]["payload"])
+        self.assertEqual(message_payload["text"], message)
 
     @override_settings(
-        SLACK_DESTINATION_URL=target_url,
+        SLACK_ENDPOINT_URL=target_url,
         SLACK_DESTINATION_ROOM=target_room,
+        SLACK_BACKEND=backend,
+        SLACK_TOKEN=token,
     )
-    @responses.activate
     def test_fund_custom_slack_channel(self):
-        responses.add(responses.POST, self.target_url, status=200, body='OK')
-        submission = ApplicationSubmissionFactory(round__parent__slack_channel='dummy')
+        backend = get_backend()
+        backend.reset_messages()
+        responses.add(responses.POST, self.target_url, status=200, body="OK")
+        submission = ApplicationSubmissionFactory(round__parent__slack_channel="dummy")
         adapter = SlackAdapter()
-        message = 'my message'
-        adapter.send_message(message, '', source=submission)
-        self.assertEqual(len(responses.calls), 1)
-        self.assertDictEqual(
-            json.loads(responses.calls[0].request.body),
-            {
-                'room': ['#dummy'],
-                'message': message,
-            }
-        )
+        message = "my message"
+        adapter.send_message(message, "", source=submission)
+        messages = backend.retrieve_messages()
+        self.assertEqual(len(messages), 1)
+        message_payload = json.loads(messages[0]["payload"])
+        self.assertEqual(message_payload["text"], message)
+        self.assertEqual(message_payload["channel"], "#dummy")
 
     @override_settings(
-        SLACK_DESTINATION_URL=target_url,
+        SLACK_ENDPOINT_URL=target_url,
         SLACK_DESTINATION_ROOM=target_room,
+        SLACK_BACKEND=backend,
+        SLACK_TOKEN=token,
     )
-    @responses.activate
     def test_fund_multiple_custom_slack_channel(self):
-        responses.add(responses.POST, self.target_url, status=200, body='OK')
-        submission = ApplicationSubmissionFactory(round__parent__slack_channel='dummy1, dummy2')
-        adapter = SlackAdapter()
-        message = 'my message'
-        adapter.send_message(message, '', source=submission)
-        self.assertEqual(len(responses.calls), 1)
-        self.assertDictEqual(
-            json.loads(responses.calls[0].request.body),
-            {
-                'room': ['#dummy1', '#dummy2'],
-                'message': message,
-            }
+        backend = get_backend()
+        backend.reset_messages()
+        submission = ApplicationSubmissionFactory(
+            round__parent__slack_channel="dummy1, dummy2"
         )
+        adapter = SlackAdapter()
+        message = "my message"
+        adapter.send_message(message, "", source=submission)
+        messages = backend.retrieve_messages()
+        self.assertEqual(len(messages), 2)
+        for index, sent_message in enumerate(messages):
+            message_payload = json.loads(sent_message["payload"])
+            self.assertEqual(message_payload["text"], message)
+            self.assertEqual(message_payload["channel"], "#dummy" + str(index + 1))
 
-    @responses.activate
     def test_gets_lead_if_slack_set(self):
         adapter = SlackAdapter()
         submission = ApplicationSubmissionFactory()
-        recipients = adapter.recipients(MESSAGES.COMMENT, source=submission, related=None)
+        recipients = adapter.recipients(
+            MESSAGES.COMMENT, source=submission, related=None
+        )
         self.assertTrue(submission.lead.slack in recipients[0])
 
-    @responses.activate
     def test_gets_blank_if_slack_not_set(self):
         adapter = SlackAdapter()
-        submission = ApplicationSubmissionFactory(lead__slack='')
-        recipients = adapter.recipients(MESSAGES.COMMENT, source=submission, related=None)
+        submission = ApplicationSubmissionFactory(lead__slack="")
+        recipients = adapter.recipients(
+            MESSAGES.COMMENT, source=submission, related=None
+        )
         self.assertTrue(submission.lead.slack in recipients[0])
 
     @override_settings(
-        SLACK_DESTINATION_URL=target_url,
+        SLACK_ENDPOINT_URL=target_url,
         SLACK_DESTINATION_ROOM=target_room,
+        SLACK_BACKEND=backend,
+        SLACK_TOKEN=token,
     )
-    @responses.activate
     def test_message_with_good_response(self):
-        responses.add(responses.POST, self.target_url, status=200, body='OK')
-
         self.adapter = SlackAdapter()
         self.adapter_process(MESSAGES.NEW_SUBMISSION)
         self.assertEqual(Message.objects.count(), 1)
         sent_message = Message.objects.first()
-        self.assertEqual(sent_message.content[0:10], self.adapter.messages[MESSAGES.NEW_SUBMISSION][0:10])
-        self.assertEqual(sent_message.status, '200: OK')
+        self.assertEqual(
+            sent_message.content[0:10],
+            self.adapter.messages[MESSAGES.NEW_SUBMISSION][0:10],
+        )
+        self.assertEqual(sent_message.status, "200: OK")
 
     @override_settings(
-        SLACK_DESTINATION_URL=target_url,
+        SLACK_ENDPOINT_URL=target_url,
         SLACK_DESTINATION_ROOM=target_room,
+        SLACK_BACKEND=backend,
+        SLACK_TOKEN=token,
     )
-    @responses.activate
-    def test_message_with_bad_response(self):
-        responses.add(responses.POST, self.target_url, status=400, body='Bad Request')
-
-        self.adapter = SlackAdapter()
-        self.adapter_process(MESSAGES.NEW_SUBMISSION)
-        self.assertEqual(Message.objects.count(), 1)
-        sent_message = Message.objects.first()
-        self.assertEqual(sent_message.content[0:10], self.adapter.messages[MESSAGES.NEW_SUBMISSION][0:10])
-        self.assertEqual(sent_message.status, '400: Bad Request')
+    def test_400_bad_request(self):
+        backend = get_backend()
+        backend.reset_messages()
+        submission = ApplicationSubmissionFactory()
+        adapter = SlackAdapter()
+        message = ""
+        message_status = adapter.send_message(message, "", source=submission)
+        messages = backend.retrieve_messages()
+        self.assertEqual(len(messages), 0)
+        self.assertEqual(message_status, "400: Bad Request")
 
 
 @override_settings(SEND_MESSAGES=True)
@@ -482,58 +501,67 @@ class TestEmailAdapter(AdapterMixin, TestCase):
         application = ApplicationSubmissionFactory()
         comment = CommentFactory(user=application.user, source=application)
 
-        self.adapter_process(MESSAGES.COMMENT, related=comment, user=comment.user, source=comment.source)
+        self.adapter_process(
+            MESSAGES.COMMENT, related=comment, user=comment.user, source=comment.source
+        )
         self.assertEqual(len(mail.outbox), 0)
 
     def test_reviewers_email(self):
         reviewers = ReviewerFactory.create_batch(4)
-        submission = ApplicationSubmissionFactory(status='external_review', reviewers=reviewers, workflow_stages=2)
+        submission = ApplicationSubmissionFactory(
+            status="external_review", reviewers=reviewers, workflow_stages=2
+        )
         self.adapter_process(MESSAGES.READY_FOR_REVIEW, source=submission)
 
         self.assertEqual(len(mail.outbox), 4)
-        self.assertTrue(mail.outbox[0].subject, 'ready to review')
+        self.assertTrue(mail.outbox[0].subject, "ready to review")
 
     def test_reviewer_update_email(self):
         reviewers = ReviewerFactory.create_batch(4)
-        submission = ApplicationSubmissionFactory(status='external_review', reviewers=reviewers, workflow_stages=2)
+        submission = ApplicationSubmissionFactory(
+            status="external_review", reviewers=reviewers, workflow_stages=2
+        )
         added = [AssignedReviewersFactory(submission=submission, reviewer=reviewers[0])]
         self.adapter_process(MESSAGES.REVIEWERS_UPDATED, source=submission, added=added)
 
         self.assertEqual(len(mail.outbox), 1)
-        self.assertTrue(mail.outbox[0].subject, 'ready to review')
+        self.assertTrue(mail.outbox[0].subject, "ready to review")
 
     def test_email_sent(self):
         self.adapter_process(MESSAGES.NEW_SUBMISSION)
         self.assertEqual(Message.objects.count(), 1)
         sent_message = Message.objects.first()
-        self.assertEqual(sent_message.status, 'sent')
+        self.assertEqual(sent_message.status, "sent")
 
     def test_email_failed(self):
-        with patch('django.core.mail.backends.locmem.EmailBackend.send_messages', side_effect=Exception('An error occurred')):
+        with patch(
+            "django.core.mail.backends.locmem.EmailBackend.send_messages",
+            side_effect=Exception("An error occurred"),
+        ):
             self.adapter_process(MESSAGES.NEW_SUBMISSION)
 
         self.assertEqual(Message.objects.count(), 1)
         sent_message = Message.objects.first()
-        self.assertEqual(sent_message.status, 'Error: An error occurred')
+        self.assertEqual(sent_message.status, "Error: An error occurred")
 
 
 @override_settings(
     SEND_MESSAGES=True,
-    EMAIL_BACKEND='anymail.backends.test.EmailBackend',
+    EMAIL_BACKEND="anymail.backends.test.EmailBackend",
 )
 class TestAnyMailBehaviour(AdapterMixin, TestCase):
     adapter = EmailAdapter()
-    TEST_API_KEY = 'TEST_API_KEY'
+    TEST_API_KEY = "TEST_API_KEY"
 
     # from: https://github.com/anymail/django-anymail/blob/7d8dbdace92d8addfcf0a517be0aaf481da11952/tests/test_mailgun_webhooks.py#L19
     def mailgun_sign(self, data, api_key=TEST_API_KEY):
         """Add a Mailgun webhook signature to data dict"""
         # Modifies the dict in place
-        data.setdefault('timestamp', '1234567890')
-        data.setdefault('token', '1234567890abcdef1234567890abcdef')
-        data['signature'] = hmac.new(
-            key=api_key.encode('ascii'),
-            msg='{timestamp}{token}'.format(**data).encode('ascii'),
+        data.setdefault("timestamp", "1234567890")
+        data.setdefault("token", "1234567890abcdef1234567890abcdef")
+        data["signature"] = hmac.new(
+            key=api_key.encode("ascii"),
+            msg="{timestamp}{token}".format(**data).encode("ascii"),
             digestmod=hashlib.sha256,
         ).hexdigest()
 
@@ -546,45 +574,46 @@ class TestAnyMailBehaviour(AdapterMixin, TestCase):
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(mail.outbox[0].to, [submission.user.email])
         message = Message.objects.first()
-        self.assertEqual(message.status, 'sent')
+        self.assertEqual(message.status, "sent")
         # Anymail test Backend uses the index of the email as id: '0'
-        self.assertEqual(message.external_id, '0')
+        self.assertEqual(message.external_id, "0")
 
     @override_settings(ANYMAIL_MAILGUN_API_KEY=TEST_API_KEY)
     def test_webhook_updates_status(self):
         message = MessageFactory()
         response = self.client.post(
-            '/activity/anymail/mailgun/tracking/',
-            data=self.mailgun_sign({
-                'event': 'delivered',
-                'Message-Id': message.external_id
-            }),
+            "/activity/anymail/mailgun/tracking/",
+            data=self.mailgun_sign(
+                {"event": "delivered", "Message-Id": message.external_id}
+            ),
             secure=True,
             json=True,
         )
         self.assertEqual(response.status_code, 200)
         message.refresh_from_db()
-        self.assertTrue('delivered' in message.status)
+        self.assertTrue("delivered" in message.status)
 
     @override_settings(ANYMAIL_MAILGUN_API_KEY=TEST_API_KEY)
     def test_webhook_adds_reject_reason(self):
         message = MessageFactory()
         response = self.client.post(
-            '/activity/anymail/mailgun/tracking/',
-            data=self.mailgun_sign({
-                'event': 'dropped',
-                'reason': 'hardfail',
-                'code': 607,
-                'description': 'Marked as spam',
-                'Message-Id': message.external_id
-            }),
+            "/activity/anymail/mailgun/tracking/",
+            data=self.mailgun_sign(
+                {
+                    "event": "dropped",
+                    "reason": "hardfail",
+                    "code": 607,
+                    "description": "Marked as spam",
+                    "Message-Id": message.external_id,
+                }
+            ),
             secure=True,
             json=True,
         )
         self.assertEqual(response.status_code, 200)
         message.refresh_from_db()
-        self.assertTrue('rejected' in message.status)
-        self.assertTrue('spam' in message.status)
+        self.assertTrue("rejected" in message.status)
+        self.assertTrue("spam" in message.status)
 
 
 class TestAdaptersForProject(AdapterMixin, TestCase):
@@ -592,8 +621,10 @@ class TestAdaptersForProject(AdapterMixin, TestCase):
     activity = ActivityAdapter
     source_factory = ProjectFactory
     # Slack
-    target_url = 'https://my-slack-backend.com/incoming/my-very-secret-key'
-    target_room = '#<ROOM ID>'
+    backend = "django_slack.backends.TestBackend"
+    target_url = "https://my-slack-backend.com/incoming/my-very-secret-key"
+    target_room = "#<ROOM ID>"
+    token = "fake-token"
 
     def test_activity_lead_change(self):
         old_lead = UserFactory()
@@ -615,11 +646,11 @@ class TestAdaptersForProject(AdapterMixin, TestCase):
             MESSAGES.UPDATE_PROJECT_LEAD,
             adapter=self.activity(),
             source=project,
-            related='Unassigned',
+            related="Unassigned",
         )
         self.assertEqual(Activity.objects.count(), 1)
         activity = Activity.objects.first()
-        self.assertIn(str('Unassigned'), activity.message)
+        self.assertIn(str("Unassigned"), activity.message)
         self.assertIn(str(project.lead), activity.message)
 
     def test_activity_created(self):
@@ -635,12 +666,14 @@ class TestAdaptersForProject(AdapterMixin, TestCase):
         self.assertEqual(project.submission, activity.related_object)
 
     @override_settings(
-        SLACK_DESTINATION_URL=target_url,
+        SLACK_ENDPOINT_URL=target_url,
         SLACK_DESTINATION_ROOM=target_room,
+        SLACK_BACKEND=backend,
+        SLACK_TOKEN=token,
     )
-    @responses.activate
     def test_slack_created(self):
-        responses.add(responses.POST, self.target_url, status=200, body='OK')
+        backend = get_backend()
+        backend.reset_messages()
         project = self.source_factory()
         user = UserFactory()
         self.adapter_process(
@@ -650,18 +683,21 @@ class TestAdaptersForProject(AdapterMixin, TestCase):
             source=project,
             related=project.submission,
         )
-        self.assertEqual(len(responses.calls), 1)
-        data = json.loads(responses.calls[0].request.body)
-        self.assertIn(str(user), data['message'])
-        self.assertIn(str(project), data['message'])
+        messages = backend.retrieve_messages()
+        self.assertEqual(len(messages), 1)
+        message_payload = json.loads(messages[0]["payload"])
+        self.assertIn(str(user), message_payload["text"])
+        self.assertIn(str(project), message_payload["text"])
 
     @override_settings(
-        SLACK_DESTINATION_URL=target_url,
+        SLACK_ENDPOINT_URL=target_url,
         SLACK_DESTINATION_ROOM=target_room,
+        SLACK_BACKEND=backend,
+        SLACK_TOKEN=token,
     )
-    @responses.activate
     def test_slack_lead_change(self):
-        responses.add(responses.POST, self.target_url, status=200, body='OK')
+        backend = get_backend()
+        backend.reset_messages()
         project = self.source_factory()
         user = UserFactory()
         self.adapter_process(
@@ -671,19 +707,21 @@ class TestAdaptersForProject(AdapterMixin, TestCase):
             source=project,
             related=project.submission,
         )
-        self.assertEqual(len(responses.calls), 1)
-        data = json.loads(responses.calls[0].request.body)
-        self.assertIn(str(user), data['message'])
-        self.assertIn(str(project), data['message'])
+        messages = backend.retrieve_messages()
+        self.assertEqual(len(messages), 1)
+        message_payload = json.loads(messages[0]["payload"])
+        self.assertIn(str(user), message_payload["text"])
+        self.assertIn(str(project), message_payload["text"])
 
     @override_settings(
-        SLACK_DESTINATION_URL=target_url,
+        SLACK_ENDPOINT_URL=target_url,
         SLACK_DESTINATION_ROOM=target_room,
+        SLACK_BACKEND=backend,
+        SLACK_TOKEN=token,
     )
-    @responses.activate
     def test_slack_applicant_update_invoice(self):
-        responses.add(responses.POST, self.target_url, status=200, body='OK')
-
+        backend = get_backend()
+        backend.reset_messages()
         project = self.source_factory()
         invoice = InvoiceFactory(project=project)
         applicant = ApplicantFactory()
@@ -695,21 +733,22 @@ class TestAdaptersForProject(AdapterMixin, TestCase):
             source=project,
             related=invoice,
         )
+        messages = backend.retrieve_messages()
 
-        self.assertEqual(len(responses.calls), 1)
-
-        data = json.loads(responses.calls[0].request.body)
-        self.assertIn(str(applicant), data['message'])
-        self.assertIn(str(project), data['message'])
+        self.assertEqual(len(messages), 1)
+        message_payload = json.loads(messages[0]["payload"])
+        self.assertIn(str(applicant), message_payload["text"])
+        self.assertIn(str(project), message_payload["text"])
 
     @override_settings(
-        SLACK_DESTINATION_URL=target_url,
+        SLACK_ENDPOINT_URL=target_url,
         SLACK_DESTINATION_ROOM=target_room,
+        SLACK_BACKEND=backend,
+        SLACK_TOKEN=token,
     )
-    @responses.activate
     def test_slack_staff_update_invoice(self):
-        responses.add(responses.POST, self.target_url, status=200, body='OK')
-
+        backend = get_backend()
+        backend.reset_messages()
         project = self.source_factory()
         invoice = InvoiceFactory(project=project)
         staff = StaffFactory()
@@ -721,8 +760,8 @@ class TestAdaptersForProject(AdapterMixin, TestCase):
             source=project,
             related=invoice,
         )
-
-        self.assertEqual(len(responses.calls), 1)
+        messages = backend.retrieve_messages()
+        self.assertEqual(len(messages), 1)
 
     @override_settings(SEND_MESSAGES=True)
     def test_email_staff_update_invoice(self):

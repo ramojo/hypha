@@ -1,28 +1,77 @@
 from django import template
 
-from ..models.project import COMMITTED
+from hypha.apply.projects.models.project import CONTRACTING
+
+from ..permissions import has_permission
 
 register = template.Library()
 
 
 @register.simple_tag
+def user_can_approve_contract(user, project):
+    can_approve, _ = has_permission(
+        "contract_approve", user, object=project, raise_exception=False
+    )
+    return can_approve
+
+
+@register.simple_tag
+def is_project_contract_approved(project):
+    contract = project.contracts.order_by("-created_at").first()
+    if contract and contract.approver:
+        return True
+    return False
+
+
+@register.simple_tag
+def contract_uploaded_by_contracting(project):
+    contract = project.contracts.order_by("-created_at").first()
+    if contract:
+        return True
+    return False
+
+
+@register.simple_tag
+def contract_reuploaded_by_applicant(project):
+    contract = project.contracts.order_by("-created_at").first()
+    if contract and contract.signed_by_applicant:
+        return True
+    return False
+
+
+@register.simple_tag
+def user_can_submit_contract(project, user, contract):
+    can_submit, _ = has_permission(
+        "submit_contract_documents",
+        user,
+        object=project,
+        raise_exception=False,
+        contract=contract,
+    )
+    return can_submit
+
+
+@register.simple_tag
 def user_can_upload_contract(project, user):
-    if user.is_apply_staff:
-        return project.status != COMMITTED
+    can_upload, _ = has_permission(
+        "contract_upload", user, object=project, raise_exception=False
+    )
+    return can_upload
 
-    # Does the Project have any unapproved contracts?
-    latest_contract = project.contracts.order_by('-created_at').first()
 
-    # No contract ever uploaded - nothing to do
-    if not latest_contract:
+@register.simple_tag
+def show_contract_upload_row(project, user):
+    if project.status != CONTRACTING:
         return False
+    if user.is_contracting or user == project.user or user.is_apply_staff:
+        return True
+    return False
 
-    # Latest contract approved - nothing to do
-    if latest_contract.approver:
+
+@register.simple_tag
+def can_update_contracting_documents(project, user):
+    if project.status != CONTRACTING:
         return False
-
-    # Contract is either:
-    #  - Unsigned: Applicant needs to sign it.
-    #  - Signed: Applicant is waiting on approval and may need to upload a new
-    #    version because my scanning was bad.
-    return True
+    if user == project.user and not user.is_apply_staff and not user.is_contracting:
+        return True
+    return False

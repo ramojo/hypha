@@ -1,53 +1,37 @@
-{% load i18n %}
-<div class="wrapper wrapper--outer-space-large">
-    <div class="data-block">
-        <div class="data-block__header">
-            <p class="data-block__title">{% trans "Reporting" %}</p>
-        </div>
-        <div class="data-block__body">
-            <div class="data-block__card">
-                <p class="data-block__card-title">{% trans "Report frequency" %}</p>
-                <p class="data-block__card-copy">{{ object.report_config.get_frequency_display }}</p>
-                {% if request.user.is_apply_staff %}
-                    <p class="data-block__card-copy">
-                        <a data-fancybox data-src="#change-frequency" href="#" class="data-block__action-link">{% trans "Change" %}</a>
-                    </p>
+{% load i18n project_tags %}
+
+{% user_can_update_project_reports object user as can_update_project_reports %}
+{% if can_update_project_reports %}
+    <div class="wrapper wrapper--outer-space-large">
+        <div class="data-block">
+            <div class="data-block__header">
+                <p class="data-block__title">{% trans "Reports" %}</p>
+            </div>
+            <div class="data-block__body">
+                {% user_can_update_report_config object user as can_update_report_config %}
+                {% if can_update_report_config %}
+                    <div class="data-block__card">
+                        <p class="data-block__card-title">{% trans "Report frequency" %}</p>
+                        <p class="data-block__card-copy">{{ object.report_config.get_frequency_display }}</p>
+                        <p class="data-block__card-copy">
+                            <a data-fancybox data-src="#change-frequency" href="#" class="data-block__action-link">{% if object.report_config.disable_reporting %}{% trans "Enable" %}{% else %}{% trans "Change" %}{% endif %}</a>
+                        </p>
                     <!-- Change report frequency modal -->
-                    <div class="modal" id="change-frequency">
-                        {{ report_data|json_script:"reportData" }}
-                        <h4 class="modal__header-bar">{% trans "Change reporting frequency" %}</h4>
-                        <div class="form__info-box">
-                            <p>
-                                {% trans "Next report will be due in" %}
-                                <b class="js-next-report-due-slot"></b>
-                                {% trans "and the report period will be" %}
-                                <b class="js-report-period-start"></b>
-                                {% trans "to" %}
-                                <b class="js-report-period-end"></b>
-                                {% trans "and then every" %}
-                                <b class="js-frequency-number-slot"></b>
-                                <b class="js-frequency-period-slot"></b>
-                                {% trans "after until the project end date" %}:
-                                <span class="js-project-end-slot"></span>.
-                            </p>
-                        </div>
-                        <p>{% trans "Schedule reports every" %}:</p>
-                        {% trans "Continue" as continue %}
-                        {% include 'funds/includes/delegated_form_base.html' with form=update_frequency_form value=continue extra_classes="form--report-frequency" %}
+                        {% include 'application_projects/includes/report_frequency_config.html' with form=update_frequency_form extra_classes="form--report-frequency" config=object.report_config %}
                     </div>
                 {% endif %}
+                <ul class="data-block__list">
+                    {% for report in object.report_config.past_due_reports %}
+                        {% include "application_projects/includes/report_line.html" with report=report %}
+                    {% endfor %}
+                    {% with next_report=object.report_config.current_due_report %}
+                        {% include "application_projects/includes/report_line.html" with report=next_report current=True %}
+                    {% endwith %}
+                </ul>
             </div>
-            <ul class="data-block__list">
-                {% for report in object.report_config.past_due_reports %}
-                    {% include "application_projects/includes/report_line.html" with report=report %}
-                {% endfor %}
-                {% with next_report=object.report_config.current_due_report %}
-                    {% include "application_projects/includes/report_line.html" with report=next_report current=True %}
-                {% endwith %}
-            </ul>
         </div>
     </div>
-</div>
+{% endif %}
 
 
 <div class="wrapper wrapper--outer-space-large">
@@ -67,21 +51,31 @@
                 <tbody>
                     {% for report in object.reports.done %}
                         <tr {% if forloop.counter > 8 %}class="is-hidden"{% endif %}>
-                            <td>
+                            <td class="py-4 px-2.5">
                                 <span class="data-block__mobile-label">{% trans "Period End" %}: </span>{{ report.end_date }}
                             </td>
-                            <td>
+                            <td class="py-4 px-2.5">
                                 <span class="data-block__mobile-label">{% trans "Submitted" %}: </span>{{ report.submitted_date|default:"Skipped" }}
                             </td>
                             <td class="data-block__links">
                                 {% if not report.skipped %}
-                                    <a class="data-block__action-link" href="{% url "apply:projects:reports:detail" pk=report.pk %}">{% trans "View" %}</a>
+                                    {% user_can_view_report report user as can_view_report %}
+                                    {% if can_view_report %}
+                                        <a class="data-block__action-icon-link" href="{% url "apply:projects:reports:detail" pk=report.pk %}">
+                                            <svg class="icon icon--project-eye"><use xlink:href="#eye"></use></svg>
+                                            {% trans "View" %}
+                                        </a>
+                                    {% endif %}
 
-                                    {% if request.user.is_apply_staff %}
-                                        <a class="data-block__action-link" href="{% url "apply:projects:reports:edit" pk=report.pk %}">{% trans "Edit" %}</a>
+                                    {% user_can_update_report report user as can_update_report %}
+                                    {% if can_update_report %}
+                                        <a class="data-block__action-icon-link" href="{% url "apply:projects:reports:edit" pk=report.pk %}">
+                                            <svg class="icon icon--project-pen"><use xlink:href="#pen"></use></svg>
+                                            {% trans "Edit" %}
+                                        </a>
                                     {% endif %}
                                 {% else %}
-                                    {% if request.user.is_apply_staff %}
+                                    {% if can_update_project_reports %}
                                         <form action="{% url "apply:projects:reports:skip" pk=report.pk %}" method="post">
                                             {% csrf_token %}
                                             <button type="submit" class="btn data-block__action-link">{% trans "Unskip" %}</button>
@@ -90,7 +84,7 @@
                                 {% endif %}
                             </td>
                         </tr>
-                        {% empty %}
+                    {% empty %}
                         <tr>
                             <td colspan="3">{% trans "No reports submitted" %}</td>
                         </tr>

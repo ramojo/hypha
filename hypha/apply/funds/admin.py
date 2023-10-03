@@ -1,13 +1,18 @@
-from django.urls import re_path, reverse
+from django.urls import re_path
 from django.utils.safestring import mark_safe
 from wagtail.contrib.modeladmin.helpers import PermissionHelper
 from wagtail.contrib.modeladmin.options import ModelAdmin, ModelAdminGroup
 
 from hypha.apply.categories.admin import CategoryAdmin, MetaTermAdmin
-from hypha.apply.determinations.admin import DeterminationFormAdmin
-from hypha.apply.funds.models import ReviewerRole, ScreeningStatus
+from hypha.apply.determinations.admin import (
+    DeterminationFormAdmin,
+    DeterminationFormSettingsAdmin,
+    DeterminationMessageSettingsAdmin,
+)
+from hypha.apply.funds.models import ReviewerRole, ReviewerSettings, ScreeningStatus
 from hypha.apply.review.admin import ReviewFormAdmin
-from hypha.apply.utils.admin import ListRelatedMixin
+from hypha.apply.utils.admin import ListRelatedMixin, RelatedFormsMixin
+from hypha.core.wagtail.admin.options import SettingModelAdmin
 
 from .admin_helpers import (
     ApplicationFormButtonHelper,
@@ -17,9 +22,14 @@ from .admin_helpers import (
     RoundFundChooserView,
     RoundStateListFilter,
 )
-from .admin_views import CopyApplicationFormViewClass
+from .admin_views import (
+    CopyApplicationFormViewClass,
+    CreateApplicationFormView,
+    EditApplicationFormView,
+)
 from .models import (
     ApplicationForm,
+    ApplicationSettings,
     FundType,
     LabType,
     RequestForPartners,
@@ -30,67 +40,31 @@ from .models import (
 
 class BaseRoundAdmin(ModelAdmin):
     choose_parent_view_class = RoundFundChooserView
-    choose_parent_template_name = 'funds/admin/parent_chooser.html'
+    choose_parent_template_name = "funds/admin/parent_chooser.html"
     button_helper_class = ButtonsWithPreview
 
     def fund(self, obj):
         return obj.get_parent()
 
 
-class RoundAdmin(BaseRoundAdmin):
+class RoundAdmin(BaseRoundAdmin, RelatedFormsMixin):
     model = Round
-    menu_icon = 'repeat'
-    list_display = ('title', 'fund', 'start_date', 'end_date', 'applications', 'review_forms')
+    menu_icon = "repeat"
+    list_display = (
+        "title",
+        "fund",
+        "start_date",
+        "end_date",
+        "application_forms",
+        "review_forms",
+    )
     list_filter = (RoundStateListFilter,)
     url_helper_class = RoundAdminURLHelper
 
-    def applications(self, obj):
-
-        def build_urls(applications):
-            for application in applications:
-                url = reverse('funds_applicationform_modeladmin_edit', args=[application.form.id])
-                yield f'<a href="{url}">{application}</a>'
-
-        urls = list(build_urls(obj.forms.all()))
-
-        if not urls:
-            return
-
-        return mark_safe('<br />'.join(urls))
-
     def fund(self, obj):
-        url = self.url_helper.get_action_url('edit', obj.fund.id)
+        url = self.url_helper.get_action_url("edit", obj.fund.id)
         url_tag = f'<a href="{url}">{obj.fund}</a>'
         return mark_safe(url_tag)
-
-    def review_forms(self, obj):
-        def build_urls(reviews):
-            for review in reviews:
-                url = reverse('review_reviewform_modeladmin_edit', args=[review.form.id])
-                yield f'<a href="{url}">{review}</a>'
-
-        urls = list(build_urls(obj.review_forms.all()))
-
-        if not urls:
-            return
-
-        return mark_safe('<br />'.join(urls))
-
-    def determination_forms(self, obj):
-        def build_urls(determinations):
-            for determination in determinations:
-                url = reverse(
-                    'determination_determinationform_modeladmin_edit',
-                    args=[determination.form.id]
-                )
-                yield f'<a href="{url}">{determination}</a>'
-
-        urls = list(build_urls(obj.determination_forms.all()))
-
-        if not urls:
-            return
-
-        return mark_safe('<br />'.join(urls))
 
 
 class ScreeningStatusPermissionHelper(PermissionHelper):
@@ -111,49 +85,50 @@ class ScreeningStatusPermissionHelper(PermissionHelper):
 
 class ScreeningStatusAdmin(ModelAdmin):
     model = ScreeningStatus
-    menu_icon = 'tag'
-    list_display = ('title', 'yes', 'default')
+    menu_icon = "tag"
+    list_display = ("title", "yes", "default")
     permission_helper_class = ScreeningStatusPermissionHelper
-    list_display = ('title', 'yes', 'default')
+    list_display = ("title", "yes", "default")
 
 
 class SealedRoundAdmin(BaseRoundAdmin):
     model = SealedRound
-    menu_icon = 'lock'
-    menu_label = 'Sealed Rounds'
-    list_display = ('title', 'fund', 'start_date', 'end_date')
+    menu_icon = "lock"
+    menu_label = "Sealed Rounds"
+    list_display = ("title", "fund", "start_date", "end_date")
 
 
-class FundAdmin(ModelAdmin):
+class FundAdmin(ModelAdmin, RelatedFormsMixin):
     model = FundType
-    menu_icon = 'doc-empty'
-    menu_label = 'Funds'
+    menu_icon = "doc-empty"
+    menu_label = "Funds"
+    list_display = ("title", "application_forms", "review_forms", "determination_forms")
 
 
 class RFPAdmin(ModelAdmin):
     model = RequestForPartners
-    menu_icon = 'group'
-    menu_label = 'Request For Partners'
+    menu_icon = "group"
+    menu_label = "Request For Partners"
 
 
-class LabAdmin(ModelAdmin):
+class LabAdmin(ModelAdmin, RelatedFormsMixin):
     model = LabType
-    menu_icon = 'doc-empty'
-    menu_label = 'Labs'
+    menu_icon = "doc-empty"
+    menu_label = "Labs"
+    list_display = ("title", "application_forms", "review_forms", "determination_forms")
 
 
 class ReviewerRoleAdmin(ModelAdmin):
     model = ReviewerRole
-    menu_icon = 'group'
-    menu_label = 'Reviewer Roles'
+    menu_icon = "group"
+    menu_label = "Reviewer Roles"
 
 
 class DeletePermission(PermissionHelper, ListRelatedMixin):
-
     related_models = [
-        ('applicationbaseform', 'application'),
-        ('roundbaseform', 'round'),
-        ('labbaseform', 'lab'),
+        ("applicationbaseform", "application"),
+        ("roundbaseform", "round"),
+        ("labbaseform", "lab"),
     ]
 
     def user_can_delete_obj(self, user, obj):
@@ -164,20 +139,22 @@ class DeletePermission(PermissionHelper, ListRelatedMixin):
 
 class ApplicationFormAdmin(ListRelatedMixin, ModelAdmin):
     model = ApplicationForm
-    menu_icon = 'form'
-    list_display = ('name', 'used_by')
+    menu_icon = "form"
+    list_display = ("name", "used_by")
     list_filter = (FormsFundRoundListFilter,)
     permission_helper_class = DeletePermission
     button_helper_class = ApplicationFormButtonHelper
+    create_view_class = CreateApplicationFormView
+    edit_view_class = EditApplicationFormView
 
     related_models = [
-        ('applicationbaseform', 'application'),
-        ('roundbaseform', 'round'),
-        ('labbaseform', 'lab'),
+        ("applicationbaseform", "application"),
+        ("roundbaseform", "round"),
+        ("labbaseform", "lab"),
     ]
 
     def copy_form_view(self, request, instance_pk):
-        kwargs = {'model_admin': self, 'form_pk': instance_pk}
+        kwargs = {"model_admin": self, "form_pk": instance_pk}
         view_class = CopyApplicationFormViewClass
         return view_class.as_view(**kwargs)(request)
 
@@ -185,16 +162,24 @@ class ApplicationFormAdmin(ListRelatedMixin, ModelAdmin):
         """Add the url for creating form copy."""
         urls = super().get_admin_urls_for_registration()
         copy_form_url = re_path(
-            self.url_helper.get_action_url_pattern('copy_form'),
+            self.url_helper.get_action_url_pattern("copy_form"),
             self.copy_form_view,
-            name=self.url_helper.get_action_url_name('copy_form')
+            name=self.url_helper.get_action_url_name("copy_form"),
         )
-        return urls + (copy_form_url, )
+        return urls + (copy_form_url,)
+
+
+class ApplicationSettingAdmin(SettingModelAdmin):
+    model = ApplicationSettings
+
+
+class ReviewerSettingAdmin(SettingModelAdmin):
+    model = ReviewerSettings
 
 
 class ApplyAdminGroup(ModelAdminGroup):
-    menu_label = 'Apply'
-    menu_icon = 'folder-open-inverse'
+    menu_label = "Apply"
+    menu_icon = "folder-open-inverse"
     items = (
         RoundAdmin,
         SealedRoundAdmin,
@@ -202,8 +187,12 @@ class ApplyAdminGroup(ModelAdminGroup):
         LabAdmin,
         RFPAdmin,
         ApplicationFormAdmin,
+        ApplicationSettingAdmin,
         ReviewFormAdmin,
+        ReviewerSettingAdmin,
         DeterminationFormAdmin,
+        DeterminationMessageSettingsAdmin,
+        DeterminationFormSettingsAdmin,
         CategoryAdmin,
         ScreeningStatusAdmin,
         ReviewerRoleAdmin,

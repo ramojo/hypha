@@ -7,7 +7,6 @@
 
     &__item {
         position: relative;
-        border: 1px solid $color--mid-dark-grey;
         padding: 1rem;
         background-color: $color--white;
         flex: 1;
@@ -38,19 +37,18 @@
     }
 
     &__text {
-        font-weight: $weight--bold;
-        margin: .5rem 0;
-        color: $color--dark-grey;
+        // font-weight: $weight--bold;
+        margin: 0.5rem 0;
+        color: var(--color-fg-default);
 
         @include media-query(small-tablet) {
-            margin: .5rem 0;
+            margin: 0.5rem 0;
         }
     }
 
     &__view {
         text-transform: uppercase;
         font-weight: $weight--bold;
-        letter-spacing: .5px;
         transition: opacity $quick-transition;
 
         @include media-query(tablet-portrait) {

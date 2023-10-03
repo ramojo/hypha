@@ -1,5 +1,5 @@
 from django.utils.translation import gettext_lazy as _
-from wagtail.core import blocks
+from wagtail import blocks
 
 from hypha.public.utils.blocks import StoryBlock
 
@@ -7,7 +7,9 @@ from hypha.public.utils.blocks import StoryBlock
 class AwesomeTableWidgetBlock(blocks.StructBlock):
     table_id = blocks.CharBlock(
         classname="title",
-        help_text=_('Please enter only table id from embed code. Table widget code creates automatically.')
+        help_text=_(
+            "Please enter only table id from embed code. Table widget code creates automatically."
+        ),
     )
 
     class Meta:

@@ -1,10 +1,11 @@
 .data-block {
     $root: &;
     margin-bottom: 1rem;
+    border: 1px solid $color--light-blue;
 
     &__header {
         padding: 1rem;
-        background-color: $color--primary;
+        background-color: $color--light-blue-90;
 
         @include media-query(mob-landscape) {
             padding: 1rem 2rem;
@@ -15,8 +16,6 @@
     }
 
     &__body {
-        border: 1px solid $color--mid-grey;
-        border-top: 0;
         padding: 1rem;
 
         @include media-query(mob-landscape) {
@@ -25,9 +24,9 @@
     }
 
     &__title {
-        font-size: map-get($font-sizes, delta);
+        font-size: $base-font-size-large;
+        font-weight: $weight--bold;
         margin: 0 0 1rem;
-        color: $color--white;
 
         @include media-query(mob-landscape) {
             margin: 0;
@@ -35,12 +34,11 @@
     }
 
     &__button {
-        padding: .7rem 1.2rem;
+        @include button($color--light-blue, $color--dark-blue);
+        display: inline-block;
+        padding: 0.5rem 1.2rem;
 
         #{$root}__header & {
-            background-color: $color--white;
-            color: $color--primary;
-
             &:hover,
             &:focus {
                 background-color: $color--white;
@@ -121,42 +119,29 @@
             }
 
             td {
-                padding: 0 0 .5rem;
                 word-break: break-word;
-
-                @include media-query(tablet-landscape) {
-                    padding: 1rem;
-                }
-
-                &:first-child {
-                    padding: 1rem 0 .5rem;
-
-                    @include media-query(tablet-landscape) {
-                        padding: 1rem;
-                    }
-                }
             }
         }
     }
 
     &__table-amount {
-        width: 25%;
+        width: 12%;
         min-width: 90px;
     }
 
     &__table-status {
         min-width: 160px;
-        width: 25%;
+        width: 15%;
     }
 
     &__table-date {
         min-width: 180px;
-        width: 25%;
+        width: 15%;
     }
 
     &__table-update {
         min-width: 160px;
-        width: 20%;
+        width: 25%;
 
         @include media-query(desktop) {
             width: 30%;
@@ -165,6 +150,7 @@
 
     &__action-link {
         font-size: map-get($font-sizes, zeta);
+        font-weight: $weight--bold;
         display: inline-block;
         margin-right: 1rem;
         text-decoration: underline;
@@ -173,6 +159,24 @@
 
         &:last-child {
             margin: 0;
+        }
+    }
+
+    &__action-icon-link {
+        font-size: map-get($font-sizes, zeta);
+        font-weight: $weight--bold;
+        display: flex;
+        align-items: center;
+        margin-right: 1rem;
+        color: $color--primary;
+        word-break: normal;
+
+        &:last-child {
+            margin: 0;
+        }
+
+        &--remove {
+            color: $color--tomato;
         }
     }
 
@@ -229,7 +233,7 @@
         margin-bottom: 2rem;
 
         &::after {
-            content: '';
+            content: "";
             width: calc(100% + 2rem);
             position: absolute;
             height: 2px;
@@ -247,7 +251,7 @@
 
     &__card-copy,
     &__card-title {
-        margin: 0 0 .5rem;
+        margin: 0 0 0.5rem;
     }
 
     &__card-title {

@@ -20,7 +20,7 @@
                     <tr class="submission-meta__row">
                         <th><h6 class="heading heading--normal heading--no-margin">{% trans "Applicant" %}</h6></th>
                         <th><h6 class="heading heading--normal heading--no-margin">{% trans "Last updated" %}</h6></th>
-                        <th><h6 class="heading heading--normal heading--no-margin">{% trans "Screening statuses" %}</h6></th>
+                        <th><h6 class="heading heading--normal heading--no-margin">{% trans "Screening decisions" %}</h6></th>
                         <th><h6 class="heading heading--normal heading--no-margin">{% trans "Review outcomes" %}</h6></th>
                     </tr>
                     <tr class="submission-meta__row submission-meta__row--black">
@@ -53,13 +53,13 @@
                                             <ul class="list list--opinion">
                                         {% endif %}
 
-                                            <li class="list__item list__item--reviewer list__item--opinion">
-                                                <span class="list__item--reviewer-name">
-                                                    {{ opinion.author }}
-                                                    {% if opinion.author.role %}{% image opinion.author.role.icon max-12x12 %}{% endif %}
-                                                </span>
-                                                <span class="list__item list__item--reviewer-outcome {{ opinion.get_opinion_display|lower }}">{{ opinion.get_opinion_display }}</span>
-                                            </li>
+                                        <li class="list__item list__item--reviewer list__item--opinion">
+                                            <span class="list__item--reviewer-name">
+                                                {{ opinion.author }}
+                                                {% if opinion.author.role %}{% image opinion.author.role.icon max-12x12 %}{% endif %}
+                                            </span>
+                                            <span class="list__item list__item--reviewer-outcome {{ opinion.get_opinion_display|lower }}">{{ opinion.get_opinion_display }}</span>
+                                        </li>
 
                                         {% if forloop.last %}
                                             </ul>
@@ -89,14 +89,14 @@
             <td colspan="{{ table.columns|length }}">
                 <table class="submission-meta">
                     <tr class="submission-meta__row">
-                    {% for column in row.table.columns %}
-                        {% if forloop.first %}
-                        {% elif forloop.counter == 2 %}
-                            <th>{% trans "Linked" %} {{ row.record.previous.stage }}</th>
-                        {% else %}
-                            <th class="th th--{{ column.header|lower }}">{{ column.header }}</th>
-                        {% endif %}
-                    {% endfor %}
+                        {% for column in row.table.columns %}
+                            {% if forloop.first %}
+                            {% elif forloop.counter == 2 %}
+                                <th>{% trans "Linked" %} {{ row.record.previous.stage }}</th>
+                            {% else %}
+                                <th class="th th--{{ column.header|lower }}">{{ column.header }}</th>
+                            {% endif %}
+                        {% endfor %}
                     </tr>
 
                     {# mutate the row to render the data for the child row #}
@@ -105,7 +105,7 @@
                             {% for column, cell in row.items %}
                                 {% if column.name != "selected" %}
                                     <td {{ column.attrs.td.as_html }}>{% if column.localize == None %}{{ cell }}{% else %}{% if column.localize %}{{ cell|localize }}{% else %}{{ cell|unlocalize }}{% endif %}{% endif %}</td>
-                                    {% endif %}
+                                {% endif %}
                             {% endfor %}
                         </tr>
                     {% endwith %}
@@ -117,33 +117,46 @@
 {% endblock %}
 
 {% block table.tbody.empty_text %}
-<tr class="all-submissions-table__empty"><td colspan="{{ table.columns|length }}">{{ table.empty_text }}</td></tr>
+    <tr class="all-submissions-table__empty"><td colspan="{{ table.columns|length }}">{{ table.empty_text }}</td></tr>
 {% endblock table.tbody.empty_text %}
 
 {% block pagination %}
-    {% if table.page and table.paginator.num_pages > 1 %}
-    <ul class="pagination">
-        {% if table.page.has_previous %}
-            <li class="previous">
-                <a href="{% querystring table.prefixed_page_field=table.page.previous_page_number %}">
-                    {% trans 'previous' %}
-                </a>
-            </li>
-        {% endif %}
-        {% if table.page.has_previous or table.page.has_next %}
-            <li class="cardinality">
-                <p>
-                    {% trans "Page" %} {{ table.page.number }}
-                </p>
-            </li>
-        {% endif %}
-        {% if table.page.has_next %}
-            <li class="next">
-                <a href="{% querystring table.prefixed_page_field=table.page.next_page_number %}">
-                    {% trans 'next' %}
-                </a>
-            </li>
-        {% endif %}
-    </ul>
+    {% if table.page and table.paginator.num_pages > 0 %}
+        <div class="pagination--wrapper">
+            <div class='per-page'>
+                {% trans "Show" %}
+                <a href="{% querystring "per_page"=25 %}" {% if table.paginator.per_page == 25 %}class="current"{% endif %}>25</a> |
+                <a href="{% querystring "per_page"=50 %}" {% if table.paginator.per_page == 50 %}class="current"{% endif %}>50</a> |
+                <a href="{% querystring "per_page"=100 %}" {% if table.paginator.per_page == 100 %}class="current"{% endif %}>100</a> |
+                {% trans "items" %}
+            </div>
+
+            {% if table.paginator.num_pages > 1 %}
+                <ul class="pagination">
+                    {% if table.page.has_previous %}
+                        <li class="previous">
+                            <a href="{% querystring table.prefixed_page_field=table.page.previous_page_number %}">
+                                {% trans 'previous' %}
+                            </a>
+                        </li>
+                    {% endif %}
+                    {% if table.page.has_previous or table.page.has_next %}
+                        {% total_num_of_pages table.rows|length table.paginator.per_page as total_pages %}
+                        <li class="cardinality">
+                            <p>
+                                {% trans "Page" %} {{ table.page.number }} / {{ total_pages }}
+                            </p>
+                        </li>
+                    {% endif %}
+                    {% if table.page.has_next %}
+                        <li class="next">
+                            <a href="{% querystring table.prefixed_page_field=table.page.next_page_number %}">
+                                {% trans 'next' %}
+                            </a>
+                        </li>
+                    {% endif %}
+                </ul>
+            {% endif %}
+        </div>
     {% endif %}
 {% endblock pagination %}

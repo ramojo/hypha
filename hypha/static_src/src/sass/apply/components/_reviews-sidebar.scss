@@ -1,6 +1,5 @@
 // stylelint-disable max-nesting-depth
 
-// also used within the React app in /components/ReviewBlock
 .reviews-sidebar {
     $root: &;
     margin-bottom: 20px;
@@ -23,7 +22,7 @@
         @supports (display: grid) {
             display: grid;
             grid-template-columns: 45% 25% 15% 15%;
-            grid-gap: 5px;
+            gap: 5px;
         }
 
         &--decision {
@@ -31,7 +30,6 @@
             font-weight: $weight--semibold;
 
             &:first-child {
-
                 #{$root}__outcome {
                     &::before,
                     &::after {
@@ -52,18 +50,24 @@
             }
         }
 
-        &--header {
-            background-color: $color--light-grey;
-            padding: 10px;
-            align-items: center;
-        }
-
         &.is-hidden {
             display: none;
         }
 
         &.no-response {
             color: $color--black-20;
+        }
+
+        .yes {
+            color: $color--green;
+        }
+
+        .maybe {
+            color: $color--mustard;
+        }
+
+        .no {
+            color: $color--tomato;
         }
     }
 

@@ -6,8 +6,8 @@ from operator import methodcaller
 import bleach
 from django import forms
 from django.utils.safestring import mark_safe
-from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
+from wagtail.signal_handlers import disable_reference_index_auto_update
 
 from hypha.apply.categories.models import MetaTerm
 from hypha.apply.users.models import User
@@ -19,6 +19,7 @@ from .models import (
     ReviewerRole,
     ScreeningStatus,
 )
+from .permissions import can_change_external_reviewers
 from .utils import model_form_initial, render_icon
 from .widgets import MetaTermSelect2Widget, Select2MultiCheckboxesWidget
 from .workflow import get_action_mapping
@@ -40,9 +41,10 @@ class ApplicationSubmissionModelForm(forms.ModelForm):
         """
         if self.errors:
             raise ValueError(
-                "The %s could not be %s because the data didn't validate." % (
+                "The %s could not be %s because the data didn't validate."
+                % (
                     self.instance._meta.object_name,
-                    'created' if self.instance._state.adding else 'changed',
+                    "created" if self.instance._state.adding else "changed",
                 )
             )
         if commit:
@@ -57,60 +59,65 @@ class ApplicationSubmissionModelForm(forms.ModelForm):
 
 
 class ProgressSubmissionForm(ApplicationSubmissionModelForm):
-    action = forms.ChoiceField(label=_('Take action'))
+    action = forms.ChoiceField(label=_("Take action"))
 
     class Meta:
         model = ApplicationSubmission
         fields: list = []
 
     def __init__(self, *args, **kwargs):
-        self.user = kwargs.pop('user')
+        self.user = kwargs.pop("user")
         super().__init__(*args, **kwargs)
         choices = list(self.instance.get_actions_for_user(self.user))
         # Sort the transitions by the order they are listed.
         sort_by = list(self.instance.phase.transitions.keys())
         choices.sort(key=lambda k: sort_by.index(k[0]))
-        action_field = self.fields['action']
+        action_field = self.fields["action"]
         action_field.choices = choices
         self.should_show = bool(choices)
 
 
 class BatchProgressSubmissionForm(forms.Form):
-    action = forms.ChoiceField(label=_('Take action'))
-    submissions = forms.CharField(widget=forms.HiddenInput(attrs={'class': 'js-submissions-id'}))
+    action = forms.ChoiceField(label=_("Take action"))
+    submissions = forms.CharField(
+        widget=forms.HiddenInput(attrs={"class": "js-submissions-id"})
+    )
 
     def __init__(self, *args, round=None, **kwargs):
-        self.user = kwargs.pop('user')
+        self.user = kwargs.pop("user")
         super().__init__(*args, **kwargs)
         workflow = round and round.workflow
         self.action_mapping = get_action_mapping(workflow)
-        choices = [(action, detail['display']) for action, detail in self.action_mapping.items()]
-        self.fields['action'].choices = choices
+        choices = [
+            (action, detail["display"])
+            for action, detail in self.action_mapping.items()
+        ]
+        self.fields["action"].choices = choices
 
     def clean_submissions(self):
-        value = self.cleaned_data['submissions']
-        submission_ids = [int(submission) for submission in value.split(',')]
+        value = self.cleaned_data["submissions"]
+        submission_ids = [int(submission) for submission in value.split(",")]
         return ApplicationSubmission.objects.filter(id__in=submission_ids)
 
     def clean_action(self):
-        value = self.cleaned_data['action']
-        action = self.action_mapping[value]['transitions']
+        value = self.cleaned_data["action"]
+        action = self.action_mapping[value]["transitions"]
         return action
 
 
 class ScreeningSubmissionForm(ApplicationSubmissionModelForm):
-
     class Meta:
         model = ApplicationSubmission
-        fields = ('screening_statuses',)
+        fields = ("screening_statuses",)
+        labels = {"screening_statuses": "Screening Decisions"}
 
     def __init__(self, *args, **kwargs):
-        self.user = kwargs.pop('user')
+        self.user = kwargs.pop("user")
         super().__init__(*args, **kwargs)
-        instance = kwargs.get('instance')
+        instance = kwargs.get("instance")
         if instance and instance.has_default_screening_status_set:
             screening_status = instance.screening_statuses.get(default=True)
-            self.fields['screening_statuses'].queryset = ScreeningStatus.objects.filter(
+            self.fields["screening_statuses"].queryset = ScreeningStatus.objects.filter(
                 yes=screening_status.yes
             )
         self.should_show = False
@@ -121,79 +128,118 @@ class ScreeningSubmissionForm(ApplicationSubmissionModelForm):
         cleaned_data = super().clean()
         instance = self.instance
         default_status = instance.screening_statuses.get(default=True)
-        if default_status not in cleaned_data['screening_statuses']:
-            self.add_error('screening_statuses', 'Can\'t remove default screening status.')
+        if default_status not in cleaned_data["screening_statuses"]:
+            self.add_error(
+                "screening_statuses", "Can't remove default screening decision."
+            )
         return cleaned_data
 
 
 class UpdateSubmissionLeadForm(ApplicationSubmissionModelForm):
-
     class Meta:
         model = ApplicationSubmission
-        fields = ('lead',)
+        fields = ("lead",)
 
     def __init__(self, *args, **kwargs):
-        kwargs.pop('user')
+        kwargs.pop("user")
         super().__init__(*args, **kwargs)
-        lead_field = self.fields['lead']
-        lead_field.label = _('Update lead from {lead} to').format(lead=self.instance.lead)
+        lead_field = self.fields["lead"]
+        lead_field.label = _("Update lead from {lead} to").format(
+            lead=self.instance.lead
+        )
         lead_field.queryset = lead_field.queryset.exclude(id=self.instance.lead.id)
 
 
+class UnarchiveSubmissionForm(ApplicationSubmissionModelForm):
+    unarchive = forms.BooleanField(required=False, widget=forms.HiddenInput())
+
+    class Meta:
+        model = ApplicationSubmission
+        fields = ("unarchive",)
+
+    def __init__(self, *args, **kwargs):
+        kwargs.pop("user")
+        super().__init__(*args, **kwargs)
+
+    def save(self, commit=True):
+        self.instance.is_archive = False
+        return super(UnarchiveSubmissionForm, self).save()
+
+
+class ArchiveSubmissionForm(ApplicationSubmissionModelForm):
+    archive = forms.BooleanField(required=False, widget=forms.HiddenInput())
+
+    class Meta:
+        model = ApplicationSubmission
+        fields = ("archive",)
+
+    def __init__(self, *args, **kwargs):
+        kwargs.pop("user")
+        super().__init__(*args, **kwargs)
+
+    def save(self, commit=True):
+        self.instance.is_archive = True
+        return super(ArchiveSubmissionForm, self).save()
+
+
 class BatchUpdateSubmissionLeadForm(forms.Form):
-    lead = forms.ChoiceField(label=_('Lead'))
-    submissions = forms.CharField(widget=forms.HiddenInput(attrs={'class': 'js-submissions-id'}))
+    lead = forms.ChoiceField(label=_("Lead"))
+    submissions = forms.CharField(
+        widget=forms.HiddenInput(attrs={"class": "js-submissions-id"})
+    )
 
     def __init__(self, *args, round=None, **kwargs):
-        self.user = kwargs.pop('user')
+        self.user = kwargs.pop("user")
         super().__init__(*args, **kwargs)
-        self.fields['lead'].choices = [(staff.id, staff) for staff in User.objects.staff()]
+        self.fields["lead"].choices = [
+            (staff.id, staff) for staff in User.objects.staff()
+        ]
 
     def clean_lead(self):
-        value = self.cleaned_data['lead']
+        value = self.cleaned_data["lead"]
         return User.objects.get(id=value)
 
     def clean_submissions(self):
-        value = self.cleaned_data['submissions']
-        submission_ids = [int(submission) for submission in value.split(',')]
+        value = self.cleaned_data["submissions"]
+        submission_ids = [int(submission) for submission in value.split(",")]
         return ApplicationSubmission.objects.filter(id__in=submission_ids)
-
-    def save(self):
-        new_lead = self.cleaned_data['lead']
-        submissions = self.cleaned_data['submissions']
-
-        for submission in submissions:
-            # Onle save if the lead has changed.
-            if submission.lead != new_lead:
-                submission.lead = new_lead
-                submission.save()
-
-        return None
 
 
 class BatchDeleteSubmissionForm(forms.Form):
-    submissions = forms.CharField(widget=forms.HiddenInput(attrs={'class': 'js-submissions-id'}))
+    submissions = forms.CharField(
+        widget=forms.HiddenInput(attrs={"class": "js-submissions-id"})
+    )
 
     def __init__(self, *args, round=None, **kwargs):
-        self.user = kwargs.pop('user')
+        self.user = kwargs.pop("user")
         super().__init__(*args, **kwargs)
 
     def clean_submissions(self):
-        value = self.cleaned_data['submissions']
-        submission_ids = [int(submission) for submission in value.split(',')]
+        value = self.cleaned_data["submissions"]
+        submission_ids = [int(submission) for submission in value.split(",")]
         return ApplicationSubmission.objects.filter(id__in=submission_ids)
 
-    def save(self):
-        submissions = self.cleaned_data['submissions']
-        submissions.delete()
-        return None
+
+class BatchArchiveSubmissionForm(forms.Form):
+    submissions = forms.CharField(
+        widget=forms.HiddenInput(attrs={"class": "js-submissions-id"})
+    )
+
+    def __init__(self, *args, round=None, **kwargs):
+        self.user = kwargs.pop("user")
+        super().__init__(*args, **kwargs)
+
+    def clean_submissions(self):
+        value = self.cleaned_data["submissions"]
+        submission_ids = [int(submission) for submission in value.split(",")]
+        return ApplicationSubmission.objects.filter(id__in=submission_ids)
 
 
 class UpdateReviewersForm(ApplicationSubmissionModelForm):
     reviewer_reviewers = forms.ModelMultipleChoiceField(
-        queryset=User.objects.reviewers().only('pk', 'full_name'),
-        widget=Select2MultiCheckboxesWidget(attrs={'data-placeholder': 'Reviewers'}),
-        label=_('Reviewers'),
+        queryset=User.objects.reviewers().only("pk", "full_name"),
+        widget=Select2MultiCheckboxesWidget(attrs={"data-placeholder": "Reviewers"}),
+        label=_("External Reviewers"),
         required=False,
     )
 
@@ -202,10 +248,12 @@ class UpdateReviewersForm(ApplicationSubmissionModelForm):
         fields: list = []
 
     def __init__(self, *args, **kwargs):
-        self.user = kwargs.pop('user')
-        if kwargs.get('instance'):
+        self.user = kwargs.pop("user")
+        if kwargs.get("instance"):
             # Providing initials(from model's instance) to BaseModelForm
-            kwargs['initial'] = model_form_initial(kwargs.get('instance'), self._meta.fields, self._meta.exclude)
+            kwargs["initial"] = model_form_initial(
+                kwargs.get("instance"), self._meta.fields, self._meta.exclude
+            )
         super().__init__(*args, **kwargs)
 
         # convert a python dict to orderedDict, to use move_to_end method
@@ -213,45 +261,39 @@ class UpdateReviewersForm(ApplicationSubmissionModelForm):
 
         assigned_roles = {
             assigned.role: assigned.reviewer
-            for assigned in self.instance.assigned.filter(
-                role__isnull=False
-            )
+            for assigned in self.instance.assigned.filter(role__isnull=False)
         }
 
         self.role_fields = {}
         field_data = make_role_reviewer_fields()
 
         for data in field_data:
-            field_name = data['field_name']
-            self.fields[field_name] = data['field']
-            self.role_fields[field_name] = data['role']
-            self.fields[field_name].initial = assigned_roles.get(data['role'])
+            field_name = data["field_name"]
+            self.fields[field_name] = data["field"]
+            self.role_fields[field_name] = data["role"]
+            self.fields[field_name].initial = assigned_roles.get(data["role"])
 
         self.submitted_reviewers = User.objects.filter(
-            id__in=self.instance.assigned.reviewed().values('reviewer'),
+            id__in=self.instance.assigned.reviewed().values("reviewer"),
         )
 
-        if self.can_alter_external_reviewers(self.instance, self.user):
-
-            reviewers = self.instance.reviewers.all().only('pk')
+        if can_change_external_reviewers(user=self.user, submission=self.instance):
+            reviewers = self.instance.reviewers.all().only("pk")
             self.prepare_field(
-                'reviewer_reviewers',
+                "reviewer_reviewers",
                 initial=reviewers,
-                excluded=self.submitted_reviewers
+                excluded=self.submitted_reviewers,
             )
 
             # Move the non-role reviewers field to the end of the field list
-            self.fields.move_to_end('reviewer_reviewers')
+            self.fields.move_to_end("reviewer_reviewers")
         else:
-            self.fields.pop('reviewer_reviewers')
+            self.fields.pop("reviewer_reviewers")
 
     def prepare_field(self, field_name, initial, excluded):
         field = self.fields[field_name]
         field.queryset = field.queryset.exclude(id__in=excluded)
         field.initial = initial
-
-    def can_alter_external_reviewers(self, instance, user):
-        return instance.stage.has_external_review and (user == instance.lead or user.is_superuser)
 
     def clean(self):
         cleaned_data = super().clean()
@@ -262,78 +304,125 @@ class UpdateReviewersForm(ApplicationSubmissionModelForm):
         ]
 
         for field, role in self.role_fields.items():
-            assigned_reviewer = AssignedReviewers.objects.filter(role=role, submission=self.instance).last()
-            if assigned_reviewer and not cleaned_data[field] and assigned_reviewer.reviewer in self.submitted_reviewers:
-                self.add_error(field, _("Can't unassign, just change, because review already submitted"))
+            assigned_reviewer = AssignedReviewers.objects.filter(
+                role=role, submission=self.instance
+            ).last()
+            if (
+                assigned_reviewer
+                and not cleaned_data[field]
+                and assigned_reviewer.reviewer in self.submitted_reviewers
+            ):
+                self.add_error(
+                    field,
+                    _("Can't unassign, just change, because review already submitted"),
+                )
                 break
 
         # If any of the users match and are set to multiple roles, throw an error
         if len(role_reviewers) != len(set(role_reviewers)) and any(role_reviewers):
-            self.add_error(None, _('Users cannot be assigned to multiple roles.'))
+            self.add_error(None, _("Users cannot be assigned to multiple roles."))
 
         return cleaned_data
 
     def save(self, *args, **kwargs):
-        instance = super().save(*args, **kwargs)
         """
         1. Update role reviewers
         2. Update non-role reviewers
             2a. Remove those not on form
             2b. Add in any new non-role reviewers selected
         """
+        with disable_reference_index_auto_update():
+            instance = super().save(*args, **kwargs)
 
-        # 1. Update role reviewers
-        assigned_roles = {
-            role: self.cleaned_data[field]
-            for field, role in self.role_fields.items()
-        }
-        for role, reviewer in assigned_roles.items():
-            if reviewer:
-                AssignedReviewers.objects.update_role(role, reviewer, instance)
-            else:
-                AssignedReviewers.objects.filter(role=role, submission=instance, review__isnull=True).delete()
+            # 1. Update role reviewers
+            assigned_roles = {
+                role: self.cleaned_data[field]
+                for field, role in self.role_fields.items()
+            }
+            for role, reviewer in assigned_roles.items():
+                if reviewer:
+                    AssignedReviewers.objects.update_role(role, reviewer, instance)
+                else:
+                    AssignedReviewers.objects.filter(
+                        role=role, submission=instance, review__isnull=True
+                    ).delete()
 
-        # 2. Update non-role reviewers
-        # 2a. Remove those not on form
-        if self.can_alter_external_reviewers(self.instance, self.user):
-            reviewers = self.cleaned_data.get('reviewer_reviewers')
-            assigned_reviewers = instance.assigned.without_roles()
-            assigned_reviewers.never_tried_to_review().exclude(
-                reviewer__in=reviewers
-            ).delete()
+            # 2. Update non-role reviewers
+            # 2a. Remove those not on form
+            if can_change_external_reviewers(submission=self.instance, user=self.user):
+                reviewers = self.cleaned_data.get("reviewer_reviewers")
+                assigned_reviewers = instance.assigned.without_roles()
+                assigned_reviewers.never_tried_to_review().exclude(
+                    reviewer__in=reviewers
+                ).delete()
 
-            remaining_reviewers = assigned_reviewers.values_list('reviewer_id', flat=True)
+                remaining_reviewers = assigned_reviewers.values_list(
+                    "reviewer_id", flat=True
+                )
 
-            # 2b. Add in any new non-role reviewers selected
-            AssignedReviewers.objects.bulk_create_reviewers(
-                [reviewer for reviewer in reviewers if reviewer.id not in remaining_reviewers],
-                instance,
-            )
+                # 2b. Add in any new non-role reviewers selected
+                AssignedReviewers.objects.bulk_create_reviewers(
+                    [
+                        reviewer
+                        for reviewer in reviewers
+                        if reviewer.id not in remaining_reviewers
+                    ],
+                    instance,
+                )
 
-        return instance
+            return instance
 
 
 class BatchUpdateReviewersForm(forms.Form):
-    submissions = forms.CharField(widget=forms.HiddenInput(attrs={'class': 'js-submissions-id'}))
+    submissions = forms.CharField(
+        widget=forms.HiddenInput(attrs={"class": "js-submissions-id"})
+    )
+    external_reviewers = forms.ModelMultipleChoiceField(
+        queryset=User.objects.reviewers().only("pk", "full_name"),
+        widget=Select2MultiCheckboxesWidget(attrs={"data-placeholder": "Select..."}),
+        label=_("External Reviewers"),
+        required=False,
+    )
 
     def __init__(self, *args, user=None, round=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.request = kwargs.pop("request", None)
+        self.user = user
+        self.fields = OrderedDict(self.fields)
 
         self.role_fields = {}
         field_data = make_role_reviewer_fields()
 
         for data in field_data:
-            field_name = data['field_name']
-            self.fields[field_name] = data['field']
-            self.role_fields[field_name] = data['role']
+            field_name = data["field_name"]
+            self.fields[field_name] = data["field"]
+            self.role_fields[field_name] = data["role"]
+
+        self.fields.move_to_end("external_reviewers")
 
     def clean_submissions(self):
-        value = self.cleaned_data['submissions']
-        submission_ids = [int(submission) for submission in value.split(',')]
+        value = self.cleaned_data["submissions"]
+        submission_ids = [int(submission) for submission in value.split(",")]
         return ApplicationSubmission.objects.filter(id__in=submission_ids)
 
     def clean(self):
         cleaned_data = super().clean()
+        external_reviewers = self.cleaned_data["external_reviewers"]
+        submissions = self.cleaned_data["submissions"]
+        if external_reviewers:
+            # User needs to be superuser or lead of all selected submissions.
+
+            if not all(
+                can_change_external_reviewers(submission=s, user=self.user)
+                for s in submissions
+            ):
+                self.add_error(
+                    "external_reviewers",
+                    _(
+                        "Make sure all submissions support external reviewers and you are lead for all the selected submissions."
+                    ),
+                )
+
         role_reviewers = [
             user
             for field, user in self.cleaned_data.items()
@@ -342,41 +431,40 @@ class BatchUpdateReviewersForm(forms.Form):
 
         # If any of the users match and are set to multiple roles, throw an error
         if len(role_reviewers) != len(set(role_reviewers)) and any(role_reviewers):
-            self.add_error(None, _('Users cannot be assigned to multiple roles.'))
+            self.add_error(None, _("Users cannot be assigned to multiple roles."))
 
         return cleaned_data
 
-    def save(self):
-        submissions = self.cleaned_data['submissions']
-        assigned_roles = {
-            role: self.cleaned_data[field]
-            for field, role in self.role_fields.items()
-        }
-        for role, reviewer in assigned_roles.items():
-            if reviewer:
-                AssignedReviewers.objects.update_role(role, reviewer, *submissions)
-
-        return None
+    def submissions_cant_have_external_reviewers(self, submissions):
+        for submission in submissions:
+            if not submission.stage.has_external_review:
+                return True
+        return False
 
 
 def make_role_reviewer_fields():
     role_fields = []
-    staff_reviewers = User.objects.staff().only('full_name', 'pk')
+    staff_reviewers = User.objects.staff().only("full_name", "pk")
 
-    for role in ReviewerRole.objects.all().order_by('order'):
+    for role in ReviewerRole.objects.all().order_by("order"):
         role_name = bleach.clean(role.name, strip=True)
-        field_name = 'role_reviewer_' + slugify(role_name)
+        field_name = f"role_reviewer_{role.id}"
         field = forms.ModelChoiceField(
             queryset=staff_reviewers,
-            empty_label=_('-- No reviewer selected --'),
+            empty_label=_("---"),
             required=False,
-            label=mark_safe(render_icon(role.icon) + _('{role_name} Reviewer').format(role_name=role_name)),
+            label=mark_safe(
+                render_icon(role.icon)
+                + _("{role_name} Reviewer").format(role_name=role_name)
+            ),
         )
-        role_fields.append({
-            'role': role,
-            'field': field,
-            'field_name': field_name,
-        })
+        role_fields.append(
+            {
+                "role": role,
+                "field": field,
+                "field_name": field_name,
+            }
+        )
 
     return role_fields
 
@@ -384,8 +472,8 @@ def make_role_reviewer_fields():
 class UpdatePartnersForm(ApplicationSubmissionModelForm):
     partner_reviewers = forms.ModelMultipleChoiceField(
         queryset=User.objects.partners(),
-        widget=Select2MultiCheckboxesWidget(attrs={'data-placeholder': 'Partners'}),
-        label=_('Partners'),
+        widget=Select2MultiCheckboxesWidget(attrs={"data-placeholder": "Partners"}),
+        label=_("Partners"),
         required=False,
     )
 
@@ -394,21 +482,24 @@ class UpdatePartnersForm(ApplicationSubmissionModelForm):
         fields: list = []
 
     def __init__(self, *args, **kwargs):
-        kwargs.pop('user')
+        kwargs.pop("user")
         super().__init__(*args, **kwargs)
         partners = self.instance.partners.all()
-        self.submitted_partners = User.objects.partners().filter(id__in=self.instance.reviews.values('author'))
+        self.submitted_partners = User.objects.partners().filter(
+            id__in=self.instance.reviews.values("author")
+        )
 
-        partner_field = self.fields['partner_reviewers']
-        partner_field.queryset = partner_field.queryset.exclude(id__in=self.submitted_partners)
+        partner_field = self.fields["partner_reviewers"]
+        partner_field.queryset = partner_field.queryset.exclude(
+            id__in=self.submitted_partners
+        )
         partner_field.initial = partners
 
     def save(self, *args, **kwargs):
         instance = super().save(*args, **kwargs)
 
         instance.partners.set(
-            self.cleaned_data['partner_reviewers'] |
-            self.submitted_partners
+            self.cleaned_data["partner_reviewers"] | self.submitted_partners
         )
         return instance
 
@@ -434,22 +525,27 @@ class GroupedModelMultipleChoiceField(forms.ModelMultipleChoiceField):
         if isinstance(choices_groupby, str):
             choices_groupby = methodcaller(choices_groupby)
         elif not callable(choices_groupby):
-            raise TypeError('choices_groupby must either be a str or a callable accepting a single argument')
+            raise TypeError(
+                "choices_groupby must either be a str or a callable accepting a single argument"
+            )
         self.iterator = partial(GroupedModelChoiceIterator, groupby=choices_groupby)
         super().__init__(*args, **kwargs)
 
     def label_from_instance(self, obj):
-        return {'label': super().label_from_instance(obj), 'disabled': not obj.is_leaf()}
+        return {
+            "label": super().label_from_instance(obj),
+            "disabled": not obj.is_leaf(),
+        }
 
 
 class UpdateMetaTermsForm(ApplicationSubmissionModelForm):
     meta_terms = GroupedModelMultipleChoiceField(
         queryset=None,  # updated in init method
-        widget=MetaTermSelect2Widget(attrs={'data-placeholder': 'Meta terms'}),
-        label=_('Meta terms'),
-        choices_groupby='get_parent',
+        widget=MetaTermSelect2Widget(attrs={"data-placeholder": "Meta terms"}),
+        label=_("Meta terms"),
+        choices_groupby="get_parent",
         required=False,
-        help_text=_('Meta terms are hierarchical in nature.'),
+        help_text=_("Meta terms are hierarchical in nature."),
     )
 
     class Meta:
@@ -457,9 +553,11 @@ class UpdateMetaTermsForm(ApplicationSubmissionModelForm):
         fields: list = []
 
     def __init__(self, *args, **kwargs):
-        kwargs.pop('user')
+        kwargs.pop("user")
         super().__init__(*args, **kwargs)
-        self.fields['meta_terms'].queryset = MetaTerm.get_root_descendants().exclude(depth=2)
+        self.fields["meta_terms"].queryset = MetaTerm.get_root_descendants().exclude(
+            depth=2
+        )
 
 
 class CreateReminderForm(forms.ModelForm):
@@ -474,16 +572,17 @@ class CreateReminderForm(forms.ModelForm):
         self.user = user
 
         if instance:
-            self.fields['submission'].initial = instance.id
+            self.fields["submission"].initial = instance.id
 
     def save(self, *args, **kwargs):
         return Reminder.objects.create(
-            title=self.cleaned_data['title'],
-            description=self.cleaned_data['description'],
-            time=self.cleaned_data['time'],
-            submission=self.cleaned_data['submission'],
-            user=self.user)
+            title=self.cleaned_data["title"],
+            description=self.cleaned_data["description"],
+            time=self.cleaned_data["time"],
+            submission=self.cleaned_data["submission"],
+            user=self.user,
+        )
 
     class Meta:
         model = Reminder
-        fields = ['title', 'description', 'time', 'action']
+        fields = ["title", "description", "time", "action"]

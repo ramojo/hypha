@@ -1,34 +1,44 @@
 import decimal
 
 import factory
-import pytz
 from dateutil.relativedelta import relativedelta
 from django.utils import timezone
 
 from hypha.apply.funds.tests.factories import ApplicationSubmissionFactory
-from hypha.apply.users.tests.factories import StaffFactory, UserFactory
+from hypha.apply.stream_forms.testing.factories import (
+    FormDataFactory,
+    FormFieldsBlockFactory,
+)
+from hypha.apply.users.groups import APPROVER_GROUP_NAME, STAFF_GROUP_NAME
+from hypha.apply.users.tests.factories import GroupFactory, StaffFactory, UserFactory
 
 from ..models.payment import Invoice, InvoiceDeliverable, SupportingDocument
 from ..models.project import (
     COMPLETE,
-    IN_PROGRESS,
+    INVOICING_AND_REPORTING,
     Contract,
     Deliverable,
     DocumentCategory,
     PacketFile,
+    PAFApprovals,
+    PAFReviewersRole,
     Project,
+    ProjectApprovalForm,
+    ProjectSOWForm,
 )
 from ..models.report import Report, ReportConfig, ReportVersion
 
 ADDRESS = {
-    'country': 'GB',
-    'thoroughfare': factory.Faker('street_name').evaluate(None, None, {'locale': None}),
-    'premise': factory.Faker('building_number').evaluate(None, None, {'locale': None}),
-    'locality': {
-        'localityname': factory.Faker('city').evaluate(None, None, {'locale': None}),
-        'administrativearea': factory.Faker('city').evaluate(None, None, {'locale': None}),
-        'postal_code': 'SW1 4AQ',
-    }
+    "country": "GB",
+    "thoroughfare": factory.Faker("street_name").evaluate(None, None, {"locale": None}),
+    "premise": factory.Faker("building_number").evaluate(None, None, {"locale": None}),
+    "locality": {
+        "localityname": factory.Faker("city").evaluate(None, None, {"locale": None}),
+        "administrativearea": factory.Faker("city").evaluate(
+            None, None, {"locale": None}
+        ),
+        "postal_code": "SW1 4AQ",
+    },
 }
 
 
@@ -37,34 +47,60 @@ def address_to_form_data():
     Generate a AddressField compatible dictionary from the address data
     """
     return {
-        'contact_address_0': ADDRESS['country'],
-        'contact_address_1': ADDRESS['thoroughfare'],
-        'contact_address_2': ADDRESS['premise'],
-        'contact_address_3_0': ADDRESS['locality']['localityname'],
-        'contact_address_3_1': ADDRESS['locality']['administrativearea'],
-        'contact_address_3_2': ADDRESS['locality']['postal_code'],
+        "contact_address_0": ADDRESS["country"],
+        "contact_address_1": ADDRESS["thoroughfare"],
+        "contact_address_2": ADDRESS["premise"],
+        "contact_address_3_0": ADDRESS["locality"]["localityname"],
+        "contact_address_3_1": ADDRESS["locality"]["administrativearea"],
+        "contact_address_3_2": ADDRESS["locality"]["postal_code"],
     }
 
 
 class DocumentCategoryFactory(factory.django.DjangoModelFactory):
-    name = factory.Sequence('name {}'.format)
+    name = factory.Sequence("name {}".format)
     recommended_minimum = 1
 
     class Meta:
         model = DocumentCategory
 
 
+class ProjectApprovalFormFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = ProjectApprovalForm
+
+    name = factory.Faker("word")
+    form_fields = FormFieldsBlockFactory
+
+
+class ProjectSOWFormFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = ProjectSOWForm
+
+    name = factory.Faker("word")
+    form_fields = FormFieldsBlockFactory
+
+
+class ProjectApprovalFormDataFactory(FormDataFactory):
+    field_factory = FormFieldsBlockFactory
+
+
 class ProjectFactory(factory.django.DjangoModelFactory):
     submission = factory.SubFactory(ApplicationSubmissionFactory)
     user = factory.SubFactory(UserFactory)
 
-    title = factory.Sequence('name {}'.format)
+    title = factory.Sequence("name {}".format)
     lead = factory.SubFactory(StaffFactory)
-    value = decimal.Decimal('100')
+    value = decimal.Decimal("100")
     proposed_start = factory.LazyFunction(timezone.now)
     proposed_end = factory.LazyFunction(timezone.now)
 
     is_locked = False
+
+    form_fields = FormFieldsBlockFactory
+    form_data = factory.SubFactory(
+        ProjectApprovalFormDataFactory,
+        form_fields=factory.SelfAttribute("..form_fields"),
+    )
 
     class Meta:
         model = Project
@@ -74,18 +110,42 @@ class ProjectFactory(factory.django.DjangoModelFactory):
             is_locked=True,
         )
         in_progress = factory.Trait(
-            status=IN_PROGRESS,
+            status=INVOICING_AND_REPORTING,
         )
         is_complete = factory.Trait(
             status=COMPLETE,
         )
 
 
+class PAFReviewerRoleFactory(factory.django.DjangoModelFactory):
+    label = factory.Faker("name")
+
+    class Meta:
+        model = PAFReviewersRole
+
+    @factory.post_generation
+    def user_roles(self, create, extracted, **kwargs):
+        if create:
+            self.user_roles.add(
+                GroupFactory(name=STAFF_GROUP_NAME),
+                GroupFactory(name=APPROVER_GROUP_NAME),
+            )
+
+
+class PAFApprovalsFactory(factory.django.DjangoModelFactory):
+    project = factory.SubFactory(ProjectFactory)
+    paf_reviewer_role = factory.SubFactory(PAFReviewerRoleFactory)
+    user = factory.SubFactory(StaffFactory)
+
+    class Meta:
+        model = PAFApprovals
+
+
 class ContractFactory(factory.django.DjangoModelFactory):
     approver = factory.SubFactory(StaffFactory)
     project = factory.SubFactory(ProjectFactory)
     approved_at = factory.LazyFunction(timezone.now)
-    is_signed = True
+    signed_by_applicant = True
 
     file = factory.django.FileField()
 
@@ -97,7 +157,7 @@ class PacketFileFactory(factory.django.DjangoModelFactory):
     category = factory.SubFactory(DocumentCategoryFactory)
     project = factory.SubFactory(ProjectFactory)
 
-    title = factory.Sequence('name {}'.format)
+    title = factory.Sequence("name {}".format)
     document = factory.django.FileField()
 
     class Meta:
@@ -105,13 +165,10 @@ class PacketFileFactory(factory.django.DjangoModelFactory):
 
 
 class InvoiceFactory(factory.django.DjangoModelFactory):
+    invoice_number = factory.Faker("name")
+    invoice_amount = decimal.Decimal("10")
     project = factory.SubFactory(ProjectFactory)
     by = factory.SubFactory(UserFactory)
-    amount = factory.Faker('pydecimal', min_value=1, max_value=10000000, right_digits=2)
-
-    date_from = factory.Faker('date_time').evaluate(None, None, {'tzinfo': pytz.utc, 'locale': None})
-    date_to = factory.Faker('date_time').evaluate(None, None, {'tzinfo': pytz.utc, 'locale': None})
-
     document = factory.django.FileField()
 
     class Meta:
@@ -135,7 +192,7 @@ class ReportConfigFactory(factory.django.DjangoModelFactory):
 
     class Meta:
         model = ReportConfig
-        django_get_or_create = ('project',)
+        django_get_or_create = ("project",)
 
     class Params:
         weeks = factory.Trait(
@@ -146,8 +203,8 @@ class ReportConfigFactory(factory.django.DjangoModelFactory):
 class ReportVersionFactory(factory.django.DjangoModelFactory):
     report = factory.SubFactory("hypha.apply.projects.tests.factories.ReportFactory")
     submitted = factory.LazyFunction(timezone.now)
-    public_content = factory.Faker('paragraph')
-    private_content = factory.Faker('paragraph')
+    public_content = factory.Faker("paragraph")
+    private_content = factory.Faker("paragraph")
     draft = True
 
     class Meta:
@@ -168,7 +225,9 @@ class ReportVersionFactory(factory.django.DjangoModelFactory):
 
 
 class ReportFactory(factory.django.DjangoModelFactory):
-    project = factory.SubFactory("hypha.apply.projects.tests.factories.ApprovedProjectFactory")
+    project = factory.SubFactory(
+        "hypha.apply.projects.tests.factories.ApprovedProjectFactory"
+    )
     end_date = factory.LazyFunction(timezone.now)
 
     class Meta:
@@ -176,24 +235,28 @@ class ReportFactory(factory.django.DjangoModelFactory):
 
     class Params:
         past_due = factory.Trait(
-            end_date=factory.LazyFunction(lambda: timezone.now() - relativedelta(days=1))
+            end_date=factory.LazyFunction(
+                lambda: timezone.now() - relativedelta(days=1)
+            )
         )
         is_submitted = factory.Trait(
-            version=factory.RelatedFactory(ReportVersionFactory, 'report', draft=False, relate=True)
+            version=factory.RelatedFactory(
+                ReportVersionFactory, "report", draft=False, relate=True
+            )
         )
         is_draft = factory.Trait(
-            version=factory.RelatedFactory(ReportVersionFactory, 'report', relate=True),
+            version=factory.RelatedFactory(ReportVersionFactory, "report", relate=True),
         )
 
 
 class ApprovedProjectFactory(ProjectFactory):
-    contract = factory.RelatedFactory(ContractFactory, 'project')
-    report_config = factory.RelatedFactory(ReportConfigFactory, 'project')
+    contract = factory.RelatedFactory(ContractFactory, "project")
+    report_config = factory.RelatedFactory(ReportConfigFactory, "project")
 
 
 class DeliverableFactory(factory.django.DjangoModelFactory):
-    name = factory.Sequence('name {}'.format)
-    unit_price = decimal.Decimal('100')
+    name = factory.Sequence("name {}".format)
+    unit_price = decimal.Decimal("100")
     project = factory.SubFactory(ProjectFactory)
 
     class Meta:

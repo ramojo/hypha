@@ -1,35 +1,54 @@
 from django.utils.translation import gettext_lazy as _
 
-from .applications import ApplicationBase, LabBase, RoundBase, RoundsAndLabs  # NOQA
+from .application_revisions import ApplicationRevision
+from .applications import (
+    ApplicationBase,
+    ApplicationSettings,
+    LabBase,
+    RoundBase,
+    RoundsAndLabs,
+)
+from .assigned_reviewers import AssignedReviewers
 from .forms import ApplicationForm
 from .reminders import Reminder
 from .reviewer_role import ReviewerRole, ReviewerSettings
 from .screening import ScreeningStatus
-from .submissions import ApplicationRevision, ApplicationSubmission, AssignedReviewers
+from .submissions import ApplicationSubmission
 
-__all__ = ['ApplicationSubmission', 'AssignedReviewers', 'ApplicationRevision', 'ApplicationForm', 'ScreeningStatus', 'ReviewerRole', 'Reminder', 'ReviewerSettings']
+__all__ = [
+    "ApplicationForm",
+    "ApplicationRevision",
+    "ApplicationSettings",
+    "ApplicationSubmission",
+    "AssignedReviewers",
+    "Reminder",
+    "ReviewerRole",
+    "ReviewerSettings",
+    "RoundsAndLabs",
+    "ScreeningStatus",
+]
 
 
 class FundType(ApplicationBase):
-    subpage_types = ['funds.Round']
+    subpage_types = ["funds.Round"]
 
     class Meta:
         verbose_name = _("Fund")
 
 
 class RequestForPartners(ApplicationBase):
-    subpage_types = ['funds.Round', 'funds.SealedRound']
+    subpage_types = ["funds.Round", "funds.SealedRound"]
 
     class Meta:
         verbose_name = _("RFP")
 
 
 class Round(RoundBase):
-    parent_page_types = ['funds.FundType', 'funds.RequestForPartners']
+    parent_page_types = ["funds.FundType", "funds.RequestForPartners"]
 
 
 class SealedRound(RoundBase):
-    parent_page_types = ['funds.RequestForPartners']
+    parent_page_types = ["funds.RequestForPartners"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

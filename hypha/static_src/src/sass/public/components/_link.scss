@@ -2,12 +2,13 @@
     &:disabled,
     &.is-disabled {
         pointer-events: none;
-        opacity: .5;
+        opacity: 0.5;
     }
 
     &--button {
-        @include button($color--light-blue, $color--dark-blue);
+        @include button($color--light-blue, $color--darkest-blue);
         display: inline-block;
+        line-height: 1;
 
         &--narrow {
             @include button--narrow;
@@ -53,12 +54,35 @@
         }
     }
 
+    &--button-white {
+        @include button(transparent, $color--black);
+        color: $color--black;
+        border-color: $color--black;
+
+        &:focus,
+        &:hover {
+            color: $color--white;
+        }
+
+        &--narrow {
+            @include button--narrow;
+        }
+    }
+
     &--button-long-text {
         padding: 10px;
 
         @include media-query(tablet-portrait) {
             padding: 10px 60px;
         }
+    }
+
+    &--button-narrow {
+        @include button--narrow;
+    }
+
+    &--button-wide {
+        @include button--wide;
     }
 
     &--underlined {
@@ -102,7 +126,7 @@
     }
 
     &--small {
-        font-size: 17px;
+        font-size: map-get($font-sizes, zeta);
     }
 
     &--arrow-pixels-blue {
